@@ -1,0 +1,5 @@
+###mtys.b2c
+mtds.b2c.pfx=/webs/certs/boc/b2c.pfx
+
+###shop.b2c
+mtds.bocnetca=/webs/certs/boc/bocnetca.cer
