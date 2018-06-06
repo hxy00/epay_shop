@@ -1,8 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="war" name="epay-shop-task:war">
-    <output-path>$PROJECT_DIR$/epay-shop-task/target</output-path>
-    <root id="archive" name="epay-shop-task-0.0.1-SNAPSHOT.war">
-      <element id="artifact" artifact-name="epay-shop-task:war exploded" />
-    </root>
-  </artifact>
-</component>

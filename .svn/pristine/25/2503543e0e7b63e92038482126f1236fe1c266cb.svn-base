@@ -1,4 +1,0 @@
-###shop.b2c
-shop.crt_file_path=D:/certs/icbc/shopb2c.crt
-shop.key_file_path=D:/certs/icbc/shopb2c.key
-shop.jks_file_path=D:/certs/icbc/shopb2c.jks
