@@ -1,6 +1,7 @@
 package com.emt.shoppay.sv.impl;
 
 import com.emt.shoppay.dao.inter.IEpayParaConfigDao;
+import com.emt.shoppay.pojo.CCBPayConfig;
 import com.emt.shoppay.sv.inter.ICcbManagerSv;
 import com.emt.shoppay.sv.inter.IPayQueryApiSv;
 import com.emt.shoppay.sv0.CCBRSASig;
@@ -33,14 +34,10 @@ public class CcbManagerSvImpl extends BaseSvImpl implements ICcbManagerSv {
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
-	
-	@SuppressWarnings("unchecked")
 	@Override
 	public Map<String, Object> ccbPay(Map<String, String> upTranData,
 			Map<String, Object> upExtend) throws Exception {
-		logger.debug("[alipayPc] 支付开始...");
+		logger.debug("[ccbPay] 支付开始...");
 		String orderId = getValue(upTranData, "orderId");
 		String subject = getValue(upTranData, "subject");
 		String fee = getValue(upTranData, "totalFee");
@@ -50,7 +47,7 @@ public class CcbManagerSvImpl extends BaseSvImpl implements ICcbManagerSv {
 		String appType = getValue(upTranData, "appType");
 		
 		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
-			logger.debug("[alipayPc] 缺少必要的参数！");
+			logger.debug("[ccbPay] 缺少必要的参数！");
 			throw new Exception("缺少必要的参数！");
 		}
 		
@@ -58,122 +55,103 @@ public class CcbManagerSvImpl extends BaseSvImpl implements ICcbManagerSv {
 		totalFee = totalFee / 100f;
 		
 		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);		
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		logger.debug("[alipayPc] 查询配置数据，返回：" + lstData);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String PMERCHANTID = getValue(dbExtend, "PMERCHANTID");
-			String POSID = getValue(dbExtend, "POSID");
-			String BRANCHID = getValue(dbExtend, "BRANCHID");
-			String CURCODE = getValue(dbExtend, "CURCODE");
-			String TXCODE = getValue(dbExtend, "TXCODE");
-			String REMARK1 = getValue(dbExtend, "REMARK1");
-			String REMARK2 = getValue(dbExtend, "REMARK2");
-			String TYPE = getValue(dbExtend, "TYPE");
-			String PUB = getValue(dbExtend, "PUB");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");
-			String timeOut = getValue(dbExtend, "timeOut");
-			
-			String globalUrl = Global.getConfig("epay.notify.url");
-			payNotifyUrl = globalUrl + payNotifyUrl;
-		    String pubId = PUB.substring(PUB.length() - 30, PUB.length());
-			
-			StringBuffer sb = new StringBuffer();
-			sb.append("MERCHANTID=" + PMERCHANTID);
-			sb.append("&POSID=" + POSID);
-			sb.append("&BRANCHID=" + BRANCHID);
-			sb.append("&ORDERID=" + orderId);
-			sb.append("&PAYMENT=" + totalFee);
-			sb.append("&CURCODE=" + CURCODE);
-			sb.append("&TXCODE=" + TXCODE);
-			sb.append("&REMARK1=" + REMARK1);
-			sb.append("&REMARK2=" + REMARK2);
-			sb.append("&TYPE=" + TYPE);
-			sb.append("&PUB=" + pubId);
-			sb.append("&GATEWAY=" + "");
-			sb.append("&CLIENTIP=" + "");
-			sb.append("&REGINFO=" + "");
-			sb.append("&PROINFO=" + EscapeUnescape.escape(subject));
-			sb.append("&REFERER=" + payNotifyUrl);
+		String bkInterfaceVersion = CCBPayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceVersion");
+		String PMERCHANTID = CCBPayConfig.PMERCHANTID;//getValue(dbExtend, "PMERCHANTID");
+		String POSID = CCBPayConfig.POSID;//getValue(dbExtend, "POSID");
+		String BRANCHID = CCBPayConfig.BRANCHID;//getValue(dbExtend, "BRANCHID");
+		String CURCODE = CCBPayConfig.CURCODE;//getValue(dbExtend, "CURCODE");
+		String TXCODE = CCBPayConfig.TXCODE;//getValue(dbExtend, "TXCODE");
+		String REMARK1 = CCBPayConfig.REMARK1;//getValue(dbExtend, "REMARK1");
+		String REMARK2 = CCBPayConfig.REMARK2;//getValue(dbExtend, "REMARK2");
+		String TYPE = CCBPayConfig.TYPE;//getValue(dbExtend, "TYPE");
+		String PUB = CCBPayConfig.PUB;//getValue(dbExtend, "PUB");
+		String payNotifyUrl = CCBPayConfig.notifyUrl;//getValue(dbExtend, "notify_url");
+//		String timeOut = CCBPayConfig.timeOut;//getValue(dbExtend, "timeOut");
 
-			String signText = sb.toString();
-			logger.debug("[CCB_PAY] signText签名以前:{}", signText);
-			signText = ccbBintoascii(ccbEncryptMD5(signText.trim().getBytes()));
-			logger.debug("[CCB_PAY] signText签名以后:{}", signText);
+		String globalUrl = Global.getConfig("epay.notify.url");
+		payNotifyUrl = globalUrl + payNotifyUrl;
+		String pubId = PUB.substring(PUB.length() - 30, PUB.length());
 
-			Map<String, String> map = new HashMap<>();
-			map.put("MAC", signText);
-			map.put("MERCHANTID", PMERCHANTID);
-			map.put("POSID", POSID);
-			map.put("BRANCHID", BRANCHID);
-			map.put("ORDERID", orderId);
-			map.put("PAYMENT", String.valueOf(totalFee));
-			map.put("CURCODE",CURCODE);
-			map.put("TXCODE", TXCODE);
-			map.put("REMARK1", REMARK1);
-			map.put("REMARK2", REMARK2);
-			map.put("TYPE", TYPE);
-			map.put("PUB", pubId);
-			map.put("GATEWAY", "");
-			map.put("CLIENTIP", "");
-			map.put("REGINFO", "");
-			map.put("PROINFO", EscapeUnescape.escape(subject));
-			map.put("REFERER", payNotifyUrl);
-			logger.debug("[CCB_PAY] map:{}", map);
+		StringBuffer sb = new StringBuffer();
+		sb.append("MERCHANTID=" + PMERCHANTID);
+		sb.append("&POSID=" + POSID);
+		sb.append("&BRANCHID=" + BRANCHID);
+		sb.append("&ORDERID=" + orderId);
+		sb.append("&PAYMENT=" + totalFee);
+		sb.append("&CURCODE=" + CURCODE);
+		sb.append("&TXCODE=" + TXCODE);
+		sb.append("&REMARK1=" + REMARK1);
+		sb.append("&REMARK2=" + REMARK2);
+		sb.append("&TYPE=" + TYPE);
+		sb.append("&PUB=" + pubId);
+		sb.append("&GATEWAY=" + "");
+		sb.append("&CLIENTIP=" + "");
+		sb.append("&REGINFO=" + "");
+		sb.append("&PROINFO=" + EscapeUnescape.escape(subject));
+		sb.append("&REFERER=" + payNotifyUrl);
 
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			Map<String, String> extend = new HashMap<String, String>();
-			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(map));
-			extend.put("shopCode", PMERCHANTID);
-			
-			// 写入数据库epay的epay_oder_detail表中
-			logger.debug("[alipayPc]保存数据，调用insertPayOrderDetail()");
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("[alipayPc]保存detail表状态：{}" , retInt);
+		String signText = sb.toString();
+		logger.debug("[CCB_PAY] signText签名以前:{}", signText);
+		signText = ccbBintoascii(ccbEncryptMD5(signText.trim().getBytes()));
+		logger.debug("[CCB_PAY] signText签名以后:{}", signText);
 
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("MERCHANTID", PMERCHANTID);
-			payMap.put("POSID", POSID);
-			payMap.put("BRANCHID", BRANCHID);
-			payMap.put("ORDERID", orderId);
-			payMap.put("PAYMENT", totalFee);
-			payMap.put("CURCODE", CURCODE);
-			payMap.put("TXCODE", TXCODE);
-			payMap.put("TYPE", TYPE);
-			payMap.put("MAC", signText);
-			payMap.put("PROINFO", EscapeUnescape.escape(subject));
-			payMap.put("GATEWAY", "");
-			payMap.put("CLIENTIP", "");
-			payMap.put("REGINFO", "");
-			payMap.put("REMARK1", REMARK1);
-			payMap.put("REMARK2", REMARK2);
-			payMap.put("REFERER", payNotifyUrl);
-			payMap.put("THIRDAPPINFO", "");
-			
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
-		}
+		Map<String, String> map = new HashMap<>();
+		map.put("MAC", signText);
+		map.put("MERCHANTID", PMERCHANTID);
+		map.put("POSID", POSID);
+		map.put("BRANCHID", BRANCHID);
+		map.put("ORDERID", orderId);
+		map.put("PAYMENT", String.valueOf(totalFee));
+		map.put("CURCODE",CURCODE);
+		map.put("TXCODE", TXCODE);
+		map.put("REMARK1", REMARK1);
+		map.put("REMARK2", REMARK2);
+		map.put("TYPE", TYPE);
+		map.put("PUB", pubId);
+		map.put("GATEWAY", "");
+		map.put("CLIENTIP", "");
+		map.put("REGINFO", "");
+		map.put("PROINFO", EscapeUnescape.escape(subject));
+		map.put("REFERER", payNotifyUrl);
+		logger.debug("[CCB_PAY] map:{}", map);
+
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Map<String, String> extend = new HashMap<String, String>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", payNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapToJson(map));
+		extend.put("shopCode", PMERCHANTID);
+
+		// 写入数据库epay的epay_oder_detail表中
+		logger.debug("[ccbPay]保存数据，调用insertPayOrderDetail()");
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("[ccbPay]保存detail表状态：{}" , retInt);
+
+		logger.debug("[ccbPay]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("MERCHANTID", PMERCHANTID);
+		payMap.put("POSID", POSID);
+		payMap.put("BRANCHID", BRANCHID);
+		payMap.put("ORDERID", orderId);
+		payMap.put("PAYMENT", totalFee);
+		payMap.put("CURCODE", CURCODE);
+		payMap.put("TXCODE", TXCODE);
+		payMap.put("TYPE", TYPE);
+		payMap.put("MAC", signText);
+		payMap.put("PROINFO", EscapeUnescape.escape(subject));
+		payMap.put("GATEWAY", "");
+		payMap.put("CLIENTIP", "");
+		payMap.put("REGINFO", "");
+		payMap.put("REMARK1", REMARK1);
+		payMap.put("REMARK2", REMARK2);
+		payMap.put("REFERER", payNotifyUrl);
+		payMap.put("THIRDAPPINFO", "");
+
+		return payMap;
 	}
 
 	@Autowired
@@ -214,18 +192,7 @@ public class CcbManagerSvImpl extends BaseSvImpl implements ICcbManagerSv {
 				interfaceName 	= MapUtils.getString(map2, "payCompany");//map2.get("payCompany").toString();
 				sysId 			= MapUtils.getString(map2, "Emt_sys_id");//map2.get("Emt_sys_id").toString();
 				orderDate		= MapUtils.getString(map2, "orderDate");
-				
-				Map<String, Object> rd = new HashMap<String, Object>();
-				rd.put("payCompany", interfaceName);
-				rd.put("sysId", sysId);
-				rd.put("type", "pay");
-				List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-				if (null == lstData || lstData.size() == 0) {
-					logger.debug("订单号：" + ORDERID + "没有查询到支付参数。");
-					throw new Exception("订单号：" + ORDERID + "没有查询到支付参数。");
-				}
-				Map<String, Object> dbExtend = lstData.get(0);
-				pubId = getValue(dbExtend, "PUB");
+				pubId  			= CCBPayConfig.PUB;
 			}else{
 				logger.debug("订单号：" + ORDERID + "不存在！");
 				throw new Exception("订单号：" + ORDERID + "不存在！");

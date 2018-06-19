@@ -8,6 +8,7 @@ import com.emt.shoppay.sv.inter.IPayQueryApiSv;
 import com.emt.shoppay.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.MapUtils;
+import org.apache.http.util.TextUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,9 +32,6 @@ import java.util.Map;
 @Service
 public class BocManagerSvImpl extends BaseSvImpl implements IBocManagerSv {
 	private Logger logger = LoggerFactory.getLogger(getClass());
-	
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
 
 	@Autowired
 	private IPayQueryApiSv iPayQueryApiSv;
@@ -48,6 +46,7 @@ public class BocManagerSvImpl extends BaseSvImpl implements IBocManagerSv {
 		String mchtCustIP = getValue(upTranData, "ip");
 		String tradeType = getValue(upTranData, "tradeType");
 		String appType = getValue(upTranData, "appType");
+		String interfaceName = getValue(upExtend, "interfaceName", null);
 
 		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
 			logger.debug("[bocPayPcB2C] 缺少必要的参数！");
@@ -66,42 +65,129 @@ public class BocManagerSvImpl extends BaseSvImpl implements IBocManagerSv {
 			throw new Exception("构建支付参数异常");
 		}
 
-		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);
+		String bkInterfaceVersion = BocPayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceVersion");
+		String merchantNo = BocPayConfig.merchantId;//getValue(dbExtend, "MerchantID");
+		String curCode = BocPayConfig.curCode;//getValue(dbExtend, "curCode");
+		String payType = BocPayConfig.payType;//getValue(dbExtend, "payType");
+		String payNotifyUrl = BocPayConfig.notifyUrl;//getValue(dbExtend, "notify_url");//银行回调地址
+		String signkeyPassword = BocPayConfig.signkeyPassword;//getValue(dbExtend, "signkeyPassword");
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		logger.debug("[bocPayPcB2C] 查询配置数据，返回：" + lstData);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
+		payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
+		if (TextUtils.isEmpty(curCode) || TextUtils.isEmpty(merchantNo)
+				|| TextUtils.isEmpty(payType)|| TextUtils.isEmpty(payNotifyUrl)) {
+			logger.debug("[bocPayPcB2C] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
+		}
 
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String merchantNo = getValue(dbExtend, "MerchantID");
-			String curCode = getValue(dbExtend, "curCode");
-			String payType = getValue(dbExtend, "payType");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");//银行回调地址
-			payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
+		String orderTime = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		// 加签
+		// orderId|orderTime|curCode|orderAmount|merchantNo
+		StringBuilder plainTextBuilder = new StringBuilder();
+		plainTextBuilder.append(orderId).append("|")
+				.append(orderTime).append("|")
+				.append(curCode).append("|")
+				.append(orderAmount).append("|")
+				.append(merchantNo);
 
-			String pfxFilePathKey = getValue(dbExtend, "pfxFilePathKey");//属性文件key
-			String signkeyPassword = getValue(dbExtend, "signkeyPassword");
+		// 如果使用B2C订单防篡改功能则获取客户IP地址，并作为加签内容，否则不上送该字段
+		if (mchtCustIP != null && mchtCustIP.trim().length() != 0)
+			plainTextBuilder.append("|").append(mchtCustIP);
 
-			if ("".equals(curCode) || "".equals(merchantNo)) {
-				logger.debug("[bocPayPcB2C] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
+		String plainText = plainTextBuilder.toString();
+		logger.debug("[bocB2cPc plainText]=[" + plainText + "]");
+		byte plainTextByte[] = plainText.getBytes("UTF-8");
+
+		// 获取私钥证书
+		BocPKCSTool tool = BocPKCSTool.getSigner(BocPayConfig.getKeystoreFileB2C(),
+				signkeyPassword, signkeyPassword,"PKCS7");
+		// 签名
+		String signData = tool.p7Sign(plainTextByte);
+		String orderTimeoutDate = BocPayConfig.getOrderTimeoutDate(new Date());
+
+		logger.info("[bocB2cPc merchantNo]=[" + merchantNo + "]");
+		logger.info("[bocB2cPc payType]=[" + payType + "]");
+		logger.info("[bocB2cPc orderId]=[" + orderId + "]");
+		logger.info("[bocB2cPc curCode]=[" + curCode + "]");
+		logger.info("[bocB2cPc orderAmount]=[" + orderAmount + "]");
+		logger.info("[bocB2cPc orderTime]=[" + orderTime + "]");
+		logger.info("[bocB2cPc orderNote]=[" + subject + "]");
+		logger.info("[bocB2cPc orderUrl]=[" + payNotifyUrl + "]");
+		logger.info("[bocB2cPc orderTimeoutDate]=[" + orderTimeoutDate + "]");
+		logger.info("[bocB2cPc mchtCustIP]=[" + mchtCustIP + "]");
+		logger.info("[bocB2cPc signData]=[" + signData + "]");
+
+		String action = BocPayConfig.pgwPortalUrl + "/RecvOrder.do";
+		logger.info("[bocB2cPc action]=[" + action + "]");
+
+		// 将参数放置到request对象
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("merchantNo", merchantNo);
+		payMap.put("payType", payType);
+		payMap.put("orderNo", orderId);
+		payMap.put("curCode", curCode);
+		payMap.put("orderAmount", orderAmount);
+		payMap.put("orderTime", orderTime);
+		payMap.put("orderNote", subject);
+		payMap.put("orderUrl", payNotifyUrl);
+		payMap.put("orderTimeoutDate", orderTimeoutDate);
+		payMap.put("mchtCustIP", mchtCustIP);
+		payMap.put("signData", signData);
+		payMap.put("action", action);
+
+		// 保存数据,写入数据库epay的epay_oder_detail表中
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Map<String, String> extend = new HashMap<String, String>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", payNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapObjToJson(payMap));
+		extend.put("shopCode", merchantNo);
+		logger.debug("[bocB2cPc]保存数据，调用insertPayOrderDetail()");
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("[bocB2cPc]保存detail表状态：{}", retInt);
+
+		logger.debug("[bocPay]发起支付请求......");
+		return payMap;
+	}
+
+	@Override
+	public Map<String, Object> bocPayWapB2C(Map<String, String> upTranData, Map<String, Object> upExtend) throws Exception {
+		try {
+			logger.debug("[bocPayWapB2C] 支付开始...");
+			String orderId = getValue(upTranData, "orderId");
+			String subject = getValue(upTranData, "subject");
+			String fee = getValue(upTranData, "totalFee");
+			String resultUrl = getValue(upTranData, "notifyUrl");//应用系统通知地址
+			String tradeType = getValue(upTranData, "tradeType");
+			String appType = getValue(upTranData, "appType");
+			String interfaceName = getValue(upExtend, "interfaceName", null);
+
+			if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
+				logger.debug("[bocPayWapB2C] 缺少必要的参数！");
+				throw new Exception("缺少必要的参数！");
 			}
 
+			//格式化金额
+			DecimalFormat df = new DecimalFormat("#0.00");
+			double dFee = Double.valueOf(fee) / 100;
+			String orderAmount = df.format(dFee);
+
+			//获取配置数据
+			String bkInterfaceVersion = BocPayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceVersion");
+			String merchantNo = BocPayConfig.merchantId;//getValue(dbExtend, "MerchantID");
+			String curCode = BocPayConfig.curCode;//getValue(dbExtend, "curCode");
+			String payType = BocPayConfig.payType;//getValue(dbExtend, "payType");
+			String payNotifyUrl = BocPayConfig.notifyUrl;//getValue(dbExtend, "notify_url");//银行回调地址
+			String signkeyPassword = BocPayConfig.signkeyPassword;//getValue(dbExtend, "signkeyPassword");
+
+			payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
+			if (TextUtils.isEmpty(curCode) || TextUtils.isEmpty(merchantNo)
+					|| TextUtils.isEmpty(payType)|| TextUtils.isEmpty(payNotifyUrl)) {
+				logger.debug("[bocPayWapB2C] 获取支付参数为空");
+				throw new Exception("获取支付参数为空");
+			}
 
 			String orderTime = DateUtils.DateTimeToYYYYMMDDhhmmss();
 			// 加签
@@ -113,35 +199,30 @@ public class BocManagerSvImpl extends BaseSvImpl implements IBocManagerSv {
 					.append(orderAmount).append("|")
 					.append(merchantNo);
 
-			// 如果使用B2C订单防篡改功能则获取客户IP地址，并作为加签内容，否则不上送该字段
-			if (mchtCustIP != null && mchtCustIP.trim().length() != 0)
-				plainTextBuilder.append("|").append(mchtCustIP);
-
 			String plainText = plainTextBuilder.toString();
-			logger.debug("[bocB2cPc plainText]=[" + plainText + "]");
+			logger.debug("[bocPayWapB2C plainText]=[" + plainText + "]");
 			byte plainTextByte[] = plainText.getBytes("UTF-8");
 
 			// 获取私钥证书
-			BocPKCSTool tool = BocPKCSTool.getSigner(BocPayConfig.getKeystoreFileB2C(pfxFilePathKey),
+			BocPKCSTool tool = BocPKCSTool.getSigner(BocPayConfig.getKeystoreFileB2C(),
 					signkeyPassword, signkeyPassword,"PKCS7");
 			// 签名
 			String signData = tool.p7Sign(plainTextByte);
 			String orderTimeoutDate = BocPayConfig.getOrderTimeoutDate(new Date());
 
-			logger.info("[bocB2cPc merchantNo]=[" + merchantNo + "]");
-			logger.info("[bocB2cPc payType]=[" + payType + "]");
-			logger.info("[bocB2cPc orderId]=[" + orderId + "]");
-			logger.info("[bocB2cPc curCode]=[" + curCode + "]");
-			logger.info("[bocB2cPc orderAmount]=[" + orderAmount + "]");
-			logger.info("[bocB2cPc orderTime]=[" + orderTime + "]");
-			logger.info("[bocB2cPc orderNote]=[" + subject + "]");
-			logger.info("[bocB2cPc orderUrl]=[" + payNotifyUrl + "]");
-			logger.info("[bocB2cPc orderTimeoutDate]=[" + orderTimeoutDate + "]");
-			logger.info("[bocB2cPc mchtCustIP]=[" + mchtCustIP + "]");
-			logger.info("[bocB2cPc signData]=[" + signData + "]");
+			logger.info("[bocPayWapB2C merchantNo]=[" + merchantNo + "]");
+			logger.info("[bocPayWapB2C payType]=[" + payType + "]");
+			logger.info("[bocPayWapB2C orderId]=[" + orderId + "]");
+			logger.info("[bocPayWapB2C curCode]=[" + curCode + "]");
+			logger.info("[bocPayWapB2C orderAmount]=[" + orderAmount + "]");
+			logger.info("[bocPayWapB2C orderTime]=[" + orderTime + "]");
+			logger.info("[bocPayWapB2C orderNote]=[" + subject + "]");
+			logger.info("[bocPayWapB2C orderUrl]=[" + payNotifyUrl + "]");
+			logger.info("[bocPayWapB2C orderTimeoutDate]=[" + orderTimeoutDate + "]");
+			logger.info("[bocPayWapB2C signData]=[" + signData + "]");
 
-			String action = BocPayConfig.pgwPortalUrl + "/RecvOrder.do";
-			logger.info("[bocB2cPc action]=[" + action + "]");
+			String action = BocPayConfig.pgwPortalUrl + "/B2CMobileRecvOrder.do";
+			logger.info("[bocPayWapB2C action]=[" + action + "]");
 
 			// 将参数放置到request对象
 			Map<String, Object> payMap = new HashMap<String, Object>();
@@ -154,31 +235,29 @@ public class BocManagerSvImpl extends BaseSvImpl implements IBocManagerSv {
 			payMap.put("orderNote", subject);
 			payMap.put("orderUrl", payNotifyUrl);
 			payMap.put("orderTimeoutDate", orderTimeoutDate);
-			payMap.put("mchtCustIP", mchtCustIP);
 			payMap.put("signData", signData);
 			payMap.put("action", action);
 
 			// 保存数据,写入数据库epay的epay_oder_detail表中
 			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
 			Map<String, String> extend = new HashMap<String, String>();
+			extend.put("interfaceName", interfaceName);
+			extend.put("interfaceVersion", bkInterfaceVersion);
 			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
+			extend.put("merVAR", "pay.cmaotai.com");
 			extend.put("orderDate", orderDate);
 			extend.put("buildData", ToolsUtil.mapObjToJson(payMap));
 			extend.put("shopCode", merchantNo);
-			logger.debug("[bocB2cPc]保存数据，调用insertPayOrderDetail()");
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("[bocB2cPc]保存detail表状态：{}", retInt);
+			logger.debug("[bocPayWapB2C]保存数据，调用insertPayOrderDetail()");
+			Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+			logger.debug("[bocPayWapB2C]保存detail表状态：{}", retInt);
 
+			logger.debug("[bocPayWapB2C]发起支付请求......");
 			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new Exception("构建支付参数异常");
 		}
-	}
-
-	@Override
-	public Map<String, Object> bocPayWapB2C(Map<String, String> upTranData, Map<String, Object> upExtend) throws Exception {
-		return null;
 	}
 
 	@Override

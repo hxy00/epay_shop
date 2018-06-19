@@ -43,7 +43,7 @@ public class BaseSvImpl implements IBaseSv {
      */
     @Override
     public Integer insertPayOrderDetail(Map<String, String> upTranData,
-                                        Map<String, Object> upExtend, Map<String, String> dbExtend, Map<String, String> extend) throws Exception {
+                                        Map<String, Object> upExtend, Map<String, String> extend) throws Exception {
         //从客户端上送的交易数据中取值
         String orderId = getValue(upTranData, "orderId");
         String subject = getValue(upTranData, "subject");
@@ -67,8 +67,8 @@ public class BaseSvImpl implements IBaseSv {
         String shopCode = getValue(extend, "shopCode");
 
         //从数据库查询出的数据中取值
-        String bkInterfaceName = getValue(dbExtend, "interfaceName");//银联接口名称
-        String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");//银联接口版本
+        String bkInterfaceName = getValue(extend, "interfaceName");//接口名称
+        String bkInterfaceVersion = getValue(extend, "interfaceVersion");//接口版本
 
         EpayOrderDetail orderDetail = new EpayOrderDetail();
         orderDetail.setAmount(Long.valueOf(totalFee));
@@ -93,11 +93,12 @@ public class BaseSvImpl implements IBaseSv {
         if (list != null && list.size() > 0) {
             rd.clear();
             rd = BeanToMapUtil.BeanToMap(orderDetail);
-            rd.put("updateTime", "now");//设置定为now，表示不为空，构建sql时
-//			rd.put("orderid", orderDetail.getOrderid());
-//			rd.put("payCompany", orderDetail.getPayCompany());
+            rd.put("createTime", "");//
+            rd.put("updateTime", "now");//设置为now，表示不为空，构建sql时赋值
             return iEpayOrderDetailDao.Update(rd);
         } else {
+            rd.put("createTime", "now");//设置为now，表示不为空，构建sql时赋值
+            rd.put("updateTime", "now");//设置为now，表示不为空，构建sql时赋值
             return iEpayOrderDetailDao.Insert(orderDetail.toMap());
         }
     }
@@ -195,12 +196,7 @@ public class BaseSvImpl implements IBaseSv {
         String tranData = Base64Util.encodeBase64(tranMapJson, "UTF-8");
         String sign = getSign("10001", tranData);
 
-        String hostAddr = Global.getConfig("epay.pay.success.url");
-        if (resultUrl.contains("/Order/pay/payOrderSuccess")) {//大額支付的
-            hostAddr = Global.getConfig("epay.pay.success.url");
-        } else {
-            hostAddr = resultUrl;
-        }
+        String hostAddr = resultUrl;
         StringBuffer url = new StringBuffer();
         url.append(hostAddr);
         url.append(hostAddr.contains("?") ? "&" : "?");

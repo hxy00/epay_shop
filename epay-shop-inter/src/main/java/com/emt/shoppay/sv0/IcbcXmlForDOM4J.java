@@ -167,7 +167,6 @@ public class IcbcXmlForDOM4J {
         try {
             Document doc = (Document) DocumentHelper.parseText(protocolXML);
             Element books = doc.getRootElement();
-            System.out.println("根节点:" + books.getName());
             // Iterator users_subElements = books.elementIterator("UID");//指定获取那个元素
             Iterator Elements = books.elementIterator();
             while (Elements.hasNext()) {

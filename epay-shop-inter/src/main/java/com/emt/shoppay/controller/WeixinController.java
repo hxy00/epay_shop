@@ -2,13 +2,11 @@ package com.emt.shoppay.controller;
 
 import com.emt.shoppay.pojo.ReturnObject;
 import com.emt.shoppay.pojo.WeixinConfig;
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
-import com.emt.shoppay.sv.inter.IValidataSv;
+import com.emt.shoppay.util.ValidataUtil;
 import com.emt.shoppay.sv.inter.IWeixinManagerSv;
-import com.emt.shoppay.sv0.WeixinXmlForDOM4J;
+import com.emt.shoppay.util.WeixinUtil;
 import com.emt.shoppay.util.Base64Util;
 import com.emt.shoppay.util.LogAnnotation;
-import com.emt.shoppay.util.StringUtils;
 import com.emt.shoppay.util.ToolsUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -38,9 +36,6 @@ import java.util.Map;
 public class WeixinController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
-
 	@Resource
 	private IWeixinManagerSv iWeixinManagerSv;
 
@@ -51,45 +46,31 @@ public class WeixinController {
 		ByteArrayOutputStream outSteam = null;
 		InputStream inStream = null;
 		try {
-			outSteam = new ByteArrayOutputStream();
 			inStream = request.getInputStream();
+			outSteam = new ByteArrayOutputStream();
 			byte[] buffer = new byte[1024];
 			int len = 0;
 			while ((len = inStream.read(buffer)) != -1) {
 				outSteam.write(buffer, 0, len);
 			}
+
+			String result = new String(outSteam.toByteArray(), "utf-8");// 获取微信调用notify_url的返回信息
+			logger.debug("微信支付成功返回数据：{}", result);
+
+			Map<String, String> map = WeixinUtil.parse_wap_b2c(result);
+			String ret = iWeixinManagerSv.notify(map);
+			logger.debug("[weixinpay] 查询订单返回：" + ret);
 		} catch (Exception e) {
 			logger.debug("回调处理失败，error={}", e); return;
 		} finally {
 			try{
-				outSteam.close();
-				inStream.close();
+				if(null != outSteam)
+					outSteam.close();
+				if(null != outSteam)
+					inStream.close();
 			} catch (IOException e) {
 				logger.debug("回调处理失败，error={}", e); return;
 			}
-		}
-		try {
-			// 获取微信调用notify_url的返回信息
-			String result = new String(outSteam.toByteArray(), "utf-8");
-			logger.debug("微信支付成功返回数据：{}", result);
-			if (StringUtils.isEmpty(result)) {
-				Map<String, String> map = WeixinXmlForDOM4J.parse_wap_b2c(result);
-				if (null == map || map.size() == 0) {
-					logger.debug("订单转换失败result——>map,result={}", result);
-				} else {
-					String sign = getValue(map, "sign");
-					//校验签名
-					if (!verifySign(map, sign)) {
-						// 数据被篡改
-						logger.debug("[weixinpay] !!!微信支付接口返回数据被篡改！");
-					} else {
-						String ret = iWeixinManagerSv.notify(map);
-						logger.debug("[weixinpay] 查询订单返回：" + ret);
-					}
-				}
-			}
-		} catch (Exception e) {
-			logger.debug("回调处理失败，error={}", e);
 		}
 	}
 	
@@ -109,25 +90,17 @@ public class WeixinController {
 			@RequestParam(value = "sysId", required = true) String sysId,// 系统ID
 			ModelMap model) {
 		ReturnObject returnObject = null;
-		PrintWriter out;
-		try {
-			response.setContentType("text/html; charset=UTF-8");
-			out = response.getWriter();
-		} catch (IOException e1) {
-			e1.printStackTrace();
-			return;
-		}
+		PrintWriter out = null;
 		if ("1.0.0.2".equals(interfaceVersion)) {
 			try {
-				Map<String, String> map = null;
+				response.setContentType("text/html; charset=UTF-8");
+				out = response.getWriter();
 
 				tranData = Base64Util.decodeBase64(tranData, "UTF-8");
-
 				ObjectMapper mapper = new ObjectMapper();
-				map = mapper.readValue(tranData, Map.class);
-
+				Map<String, String> map = mapper.readValue(tranData, Map.class);
 				// 验证数据正确性
-				if (!validataSv.ValidataData(busiid, map, signData)) {
+				if (!ValidataUtil.ValidataData(busiid, map, signData)) {
 					returnObject = new ReturnObject();
 					returnObject.setRetcode(11);
 					returnObject.setRetmsg("错误原因：非法的交易数据！");
@@ -144,7 +117,6 @@ public class WeixinController {
 				upExtend.put("sysId", sysId);
 				
 				Map<String, String> resultMap = iWeixinManagerSv.weixinPay(map, upExtend);
-				
 				//验证数据的准确性
 				String return_code = getValue(resultMap, "return_code");
 				String result_code = getValue(resultMap, "result_code");
@@ -152,12 +124,12 @@ public class WeixinController {
 				String nonce_str = getValue(resultMap, "nonce_str");
 				if ("SUCCESS".equals(return_code) && "SUCCESS".equals(result_code)) {
 					logger.debug("[weixin_unifiedorder] three");
-					// 返回数据为成功时d
+					// 返回数据为成功时
 					String prepay_id = resultMap.get("prepay_id");
 					logger.debug("[weixin_unifiedorder] four");
 
-					String tempString = "orderId=" + out_trade_no + "&prepay_id=" + prepay_id;
-					String sign = validataSv.getValidataString("10001", tempString);
+					String tempString = "orderId=" + out_trade_no + "&prepay_id=" + prepay_id + "&noncestr=" + nonce_str;
+					String sign = ValidataUtil.getValidataString("10001", tempString);
 					logger.debug("[weixin_unifiedorder] five");
 
 					Map<String, String> jsonData = new HashMap<String, String>();
@@ -181,88 +153,20 @@ public class WeixinController {
 					returnObject.setRetcode(10);
 					returnObject.setRetmsg(MapUtils.getString(resultMap, "return_msg"));
 
-					String log = returnObject.toJson();
-					logger.debug(log);
-					out.write(log);
+					String json = returnObject.toJson();
+					logger.debug("[weixin_unifiedorder]" + json);
+					out.write(json);
 				}
 			} catch (Exception e) {
 				returnObject = new ReturnObject();
 				returnObject.setRetcode(11);
 				returnObject.setRetmsg("创建预支付订单失败！");
 
-				String log = returnObject.toJson();
-				logger.debug(log);
-				logger.debug(e.getMessage());
-				out.write(log);
+				String json = returnObject.toJson();
+				logger.debug("[weixin_unifiedorder]" + json);
+				logger.debug("[weixin_unifiedorder]" + e.getMessage());
+				out.write(json);
 			}
-		}
-	}
-
-	/**
-	 * 微信商城订单查询接口
-	* @Title: queryWeixinOrder 
-	* @Description: TODO(这里用一句话描述这个方法的作用) 
-	* @param @param orderId
-	* @param @return  参数说明 
-	* @return ReturnObject    返回类型 
-	* @throws
-	 */
-	@LogAnnotation(name = "WriteLog", val = true, describe = "微信订单状态查询")
-	@RequestMapping(value = "/queryWeixinOrder")
-	public @ResponseBody ReturnObject queryWeixinOrder(String orderId) {
-		String appid = "wx7a2dfd9101d0bece";
-		String mch_id = "1220734401";
-		String appSecret = "a27ac11c644038a10399f4aabemao888";
-		try {
-			Long randomLong = System.currentTimeMillis();
-			Map<String, String> map = new HashMap<String, String>();
-			map.put("appid", appid);
-			map.put("mch_id", mch_id);
-			map.put("out_trade_no", orderId);
-			map.put("nonce_str", randomLong.toString());
-			
-			List<String> list = new ArrayList<String>();
-			list.add("sign");
-			list.add("sign_type");
-			
-			map = ToolsUtil.paraFilter(map, list, true);
-			String prestr = ToolsUtil.createLinkString(map);
-			String mysign = sign(prestr, appSecret);
-			map.put("sign", mysign);
-
-			String xml = ToolsUtil.mapToXml(map, null, null);
-
-			URL url = new URL("https://api.mch.weixin.qq.com/pay/orderquery");
-			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-			conn.setConnectTimeout(30000); // 设置连接主机超时（单位：毫秒)
-			conn.setReadTimeout(30000); // 设置从主机读取数据超时（单位：毫秒)
-			conn.setDoOutput(true); // post请求参数要放在http正文内，顾设置成true，默认是false
-			conn.setDoInput(true); // 设置是否从httpUrlConnection读入，默认情况下是true
-			conn.setUseCaches(false); // Post 请求不能使用缓存
-			// 设定传送的内容类型是可序列化的java对象(如果不设此项,在传送序列化对象时,当WEB服务默认的不是这种类型时可能抛java.io.EOFException)
-			conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-			conn.setRequestMethod("POST");// 设定请求的方法为"POST"，默认是GET
-			conn.setRequestProperty("Content-Length", xml.length() + "");
-			String encode = "utf-8";
-			OutputStreamWriter out = new OutputStreamWriter(conn.getOutputStream(), encode);
-			out.write(xml);
-			out.flush();
-			out.close();
-			if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-				throw new Exception("请求状态：" + conn.getResponseCode());
-			}
-			BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-			String line = "";
-			StringBuffer strBuf = new StringBuffer();
-			while ((line = in.readLine()) != null) {
-				strBuf.append(line).append("\n");
-			}
-			in.close();
-			String resultXml = strBuf.toString();
-			Map<String, String> resultMap = WeixinXmlForDOM4J.parse_wap_b2c(resultXml);
-			return new ReturnObject(ReturnObject.SuccessEnum.success, "查询成功", resultMap, 1);
-		} catch (Exception e) {
-			return new ReturnObject(ReturnObject.SuccessEnum.fail, "查询失败：" + e.getMessage(), null, 1);
 		}
 	}
 
@@ -284,7 +188,7 @@ public class WeixinController {
 			//获取商户号
 			String merId = getValue(resultMap, "mch_id");
 			//根据商户号获取key
-			String key = WeixinConfig.getAppSecret(merId);
+			String key = WeixinConfig.key;
 			//组装签名数据
 			List<String> list = new ArrayList<String>();
 			list.add("sign");

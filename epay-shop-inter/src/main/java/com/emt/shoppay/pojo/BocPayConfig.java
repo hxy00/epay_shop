@@ -4,11 +4,14 @@ import com.emt.shoppay.util.Config;
 import com.emt.shoppay.util.Global;
 import com.emt.shoppay.util.StringUtils;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.httpclient.NameValuePair;
 import org.apache.http.util.TextUtils;
 import org.dom4j.Document;
 import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLSession;
 import java.io.UnsupportedEncodingException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -21,73 +24,27 @@ import java.util.regex.Pattern;
  *
  */
 public class BocPayConfig {
-//	private static BocPayConfig bocPayConfig;
-//	static Logger logger = LoggerFactory.getLogger(bocPayConfig.getClass());
-
-	public static String merchantNoB2CYS = "104520159210003";
-	public static String merchantNoB2BYS = "39040";
-
+	public static String bkInterfaceVersion = "1.0.1";
+	public static String merchantId = "104520159210002";
 	public static String payType = "1";
-
 	public static String curCode = "001";
-	
-	public static String signkeyPassword = "888888";//证书库密码
-
+	public static String notifyUrl = "/epay/bocpay/boc_notify_pc_b2c";
 	public static String pgwPortalUrl = "https://ebspay.boc.cn/PGWPortal";
-//	public static String pgwPortalUrl = "https://101.231.206.170/PGWPortal";
-//	public static String pgwPortalUrl = "http://180.168.146.70/PGWPortal";
-	
-	/**
-	 * 获取b2c商户号
-	 * @param sysId
-	 * @return
-	 */
-//	public static String getB2cMerNo(String sysId){
-//		String merNo = "104520159210003";
-//		switch (sysId) {
-//		case "900001":
-//			merNo = "104520159210003";
-//			break;
-//		case "400001":
-//			merNo = "104520159210002";
-//			break;
-//		default:
-//			break;
-//		}
-//		return merNo;
-//	}
-	
-	/**
-	 * 获取b2b商户号
-	 * @param sysId
-	 * @return
-	 */
-//	public static String getB2bMerNo(String sysId){
-//		String merNo = "39040";
-//		switch (sysId) {
-//		case "900001":
-//			merNo = "39040";
-//			break;
-//		case "400001":
-//			merNo = "39024";
-//			break;
-//		default:
-//			break;
-//		}
-//		return merNo;
-//	}
+	public static String pfxFilePath = "mtds.b2c.pfx";
+	public static String cerFilePath = "mtds.bocnetca";
+	public static String signkeyPassword = "888888";//证书库密码
 	
 	/**
 	 * 获取证书路径 b2c
 	 * @return
 	 */
-	public static String getKeystoreFileB2C(String pfxFilePathKey){
+	public static String getKeystoreFileB2C(){
 		String operatingSystem = Global.getConfig("epay.OS.switch");
 		String keyStorePath = null;
 		if("Linux".equals(operatingSystem)){
-			keyStorePath = Config.getConfig("pay/boc/boc_conf_linux.properties", pfxFilePathKey);
+			keyStorePath = Config.getConfig("pay/boc/boc_conf_linux.properties", pfxFilePath);
 		} else {
-			keyStorePath = Config.getConfig("pay/boc/boc_conf_windows.properties", pfxFilePathKey);
+			keyStorePath = Config.getConfig("pay/boc/boc_conf_windows.properties", pfxFilePath);
 		}
 		return keyStorePath;
 	}
@@ -100,9 +57,9 @@ public class BocPayConfig {
 		String operatingSystem = Global.getConfig("epay.OS.switch");
 		String bocnetcaPath = null;
 		if("Linux".equals(operatingSystem)){
-			bocnetcaPath = Config.getConfig("pay/boc/boc_conf_linux.properties", "mtds.bocnetca");
+			bocnetcaPath = Config.getConfig("pay/boc/boc_conf_linux.properties", cerFilePath);
 		} else {
-			bocnetcaPath = Config.getConfig("pay/boc/boc_conf_windows.properties", "mtds.bocnetca");
+			bocnetcaPath = Config.getConfig("pay/boc/boc_conf_windows.properties", cerFilePath);
 		}
 		return bocnetcaPath;
 	}
@@ -222,7 +179,6 @@ public class BocPayConfig {
 	 * @param xml
 	 * @return
 	 */
-	@SuppressWarnings("unchecked")
 	public static Map<String, Object> getMapByXml(String xml) {
 		Map<String, Object> resultMap = new HashMap<String, Object>();
 		try {
@@ -263,7 +219,6 @@ public class BocPayConfig {
 	 * @param xml
 	 * @return
 	 */
-	@SuppressWarnings("unchecked")
 	public static Map<String, Object> getMapByXml(String xml, String business) {
 		Map<String, Object> resultMap = new HashMap<String, Object>();
 		try {
@@ -324,5 +279,20 @@ public class BocPayConfig {
 				break;
 		}
 		return returnMessage;
+	}
+
+	/**
+	 * MAP类型数组转换成NameValuePair类型
+	 * @param properties  MAP类型数组
+	 * @return NameValuePair类型数组
+	 */
+	public static NameValuePair[] generatNameValuePair(Map<String, String> properties) {
+		NameValuePair[] nameValuePair = new NameValuePair[properties.size()];
+		int i = 0;
+		for (Map.Entry<String, String> entry : properties.entrySet()) {
+			nameValuePair[i++] = new NameValuePair(entry.getKey(), entry.getValue());
+		}
+
+		return nameValuePair;
 	}
 }

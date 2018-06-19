@@ -13,4 +13,9 @@ public interface IPayPostSv {
 	 */
 	public void postPayResult(Map<String, Object> pMap) throws Exception;
 
+	/**
+	 * 查询已支付且未推送的数据进行推送
+	 */
+	public void alreadyPayPost();
+
 }

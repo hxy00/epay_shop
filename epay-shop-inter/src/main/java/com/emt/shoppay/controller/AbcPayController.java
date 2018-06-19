@@ -4,9 +4,7 @@ import com.abc.pay.client.JSON;
 import com.abc.pay.client.ebus.PaymentResult;
 import com.abc.pay.client.ebus.RefundRequest;
 import com.emt.shoppay.pojo.Pc_PayUserInfo;
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
 import com.emt.shoppay.sv.inter.IAbcManagerSv;
-import com.emt.shoppay.sv.inter.IValidataSv;
 import com.emt.shoppay.util.LogAnnotation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +33,6 @@ import java.util.Map;
 @RequestMapping("/epay/abc")
 public class AbcPayController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
-	
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
 	
 	@Resource
 	private IAbcManagerSv iAbcManagerSv;
@@ -77,7 +72,6 @@ public class AbcPayController {
 				logger.debug("[abc_notify_wap]PayType         = " + tResult.getValue("PayType"));
 				logger.debug("[abc_notify_wap]NotifyType      = " + tResult.getValue("NotifyType"));
 				logger.debug("[abc_notify_wap]TrnxNo          = " + tResult.getValue("iRspRef"));
-
 
 				String url = iAbcManagerSv.notify(params, "abc_pay_pc");
 				logger.debug("[abc_notify_wap] url={} ", url);

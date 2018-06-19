@@ -1,10 +1,10 @@
 package com.emt.shoppay.sv.impl;
 
 import com.emt.shoppay.dao.inter.IEpayParaConfigDao;
+import com.emt.shoppay.pojo.AlipayConfig;
 import com.emt.shoppay.pojo.aliQuery.ReturnCode;
 import com.emt.shoppay.sv.inter.IAlipayManagerSv;
 import com.emt.shoppay.sv.inter.IPayQueryApiSv;
-import com.emt.shoppay.sv.inter.IValidataSv;
 import com.emt.shoppay.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -31,14 +31,8 @@ import java.util.*;
 public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 	
-	private static final String service_pc = "create_direct_pay_by_user";
-	private static final String service_wap = "alipay.wap.create.direct.pay.by.user";
-	
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
-	
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
+	private static String service_pc = "create_direct_pay_by_user";
+	private static String service_wap = "alipay.wap.create.direct.pay.by.user";
 
 	@Autowired
 	private IPayQueryApiSv iPayQueryApiSv;
@@ -59,9 +53,6 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 			throw new Exception("缺少必要的参数！");
 		}
 		
-		Double totalFee = Double.parseDouble(fee);
-		totalFee = totalFee / 100f;
-		
 		String interfaceName = getValue(upExtend, "interfaceName", null);
 		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
 		String qid = getValue(upExtend, "qid", null);
@@ -70,121 +61,104 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 		String busiid = getValue(upExtend, "busiid", null);
 		String sysId = getValue(upExtend, "sysId", null);		
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		logger.debug("[alipayWap] 查询配置数据，返回：" + lstData);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String reqUrl = getValue(dbExtend, "req_url");
-			String partner = getValue(dbExtend, "partner");
-			String seller_email = getValue(dbExtend, "seller_email");
-			String key = getValue(dbExtend, "key");
-			String input_charset = getValue(dbExtend, "input_charset");
-			String sign_type = getValue(dbExtend, "sign_type");
-			String payment_type = getValue(dbExtend, "payment_type");
-			String client_id = getValue(dbExtend, "client_id");
-			String private_key = getValue(dbExtend, "private_key");
-			String des_key = getValue(dbExtend, "des_key");
-			String log_path = getValue(dbExtend, "log_path");
-			String return_url = getValue(dbExtend, "return_url");
-			String notify_url = getValue(dbExtend, "notify_url");
-			String error_url = getValue(dbExtend, "error_url");
-			String timeOut = getValue(dbExtend, "timeOut");
-			timeOut = !TextUtils.isEmpty(timeOut) ? timeOut : "30";
-			if ("".equals(reqUrl) || "".equals(partner) || "".equals(key) || "".equals(input_charset) 
-				|| "".equals(sign_type) || "".equals(payment_type) || "".equals(return_url) || "".equals(notify_url) || "".equals(error_url)) {
-				logger.debug("[alipayWap] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-			
-			String globalUrl = Global.getConfig("epay.notify.url");
-			return_url = globalUrl + return_url;
-			notify_url = globalUrl + notify_url;
-			error_url = globalUrl + error_url;
-			reqUrl += reqUrl.contains("?") ? "_input_charset=" + input_charset : "?_input_charset=" + input_charset;
 
-			// 构建sign
-			Map<String, String> map = new HashMap<String, String>();
-			DecimalFormat df = new DecimalFormat("######0.00");
-			map.put("service", service_wap);
-			map.put("partner", partner);
-			map.put("_input_charset", input_charset);
-			map.put("out_trade_no", orderId);
-			map.put("subject", subject);
-			map.put("total_fee", df.format(totalFee));
-			map.put("seller_id", partner);
-			map.put("payment_type", payment_type);
-			map.put("return_url", return_url);
-			map.put("notify_url", notify_url);
-			map.put("error_notify_url", error_url);
-
-			String showUrl = notify_url;
-			String temp = "amount=" + totalFee + "&orderId=" + orderId + "&status=5";
-			String sign = validataSv.getValidataString("10001", temp);
-			if(showUrl.contains("?")){
-				showUrl = resultUrl + "&orderid=" + orderId + "&amount=" + totalFee + "&status=5&sign=" + sign;
-			} else {
-				showUrl = resultUrl + "?orderid=" + orderId + "&amount=" + totalFee + "&status=5&sign=" + sign;
-			}
-			map.put("show_url", showUrl);
-			List<String> list = new ArrayList<>();
-			list.add("sign");
-			list.add("sign_type");
-			map = ToolsUtil.paraFilter(map, list, true);
-			String prestr = alipayLinkString(map);
-			String mySign = alipaySign(prestr, key);
-			map.put("sign_type", sign_type);
-			map.put("sign", mySign);
-		
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			Map<String, String> extend = new HashMap<String, String>();
-			extend.put("merUrl", notify_url);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(map));
-			extend.put("shopCode", partner);
-			
-			// 写入数据库epay的epay_oder_detail表中
-			logger.debug("[alipayWap]保存数据，调用insertPayOrderDetail()");
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("[alipayWap]保存detail表状态：{}", retInt);
-
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("submitUrl", reqUrl);
-			payMap.put("service", service_wap);
-			payMap.put("partner", partner);
-			payMap.put("_input_charset", input_charset);
-			payMap.put("sign_type", sign_type);
-			payMap.put("sign", mySign);
-			payMap.put("out_trade_no", orderId);
-			payMap.put("subject", subject);
-			payMap.put("total_fee", totalFee);
-			payMap.put("seller_id", partner);
-			payMap.put("payment_type", payment_type);
-			payMap.put("return_url", return_url);
-			payMap.put("notify_url", notify_url);
-			payMap.put("error_notify_url", error_url);
-			payMap.put("rn_check", "T"); // 是否发起实名校验 T：发起实名校验； F：不发起实名校验。
-			payMap.put("show_url", showUrl);
-//			payMap.put("it_b_pay", timeOut + "m");
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
+		String bkInterfaceVersion = AlipayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceName");
+		String reqUrl = AlipayConfig.reqUrl;//getValue(dbExtend, "req_url");
+		String partner = AlipayConfig.partner;//getValue(dbExtend, "partner");
+		String key = AlipayConfig.key;//getValue(dbExtend, "key");
+		String input_charset = AlipayConfig.inputCharset;//getValue(dbExtend, "input_charset");
+		String sign_type = AlipayConfig.signType;//getValue(dbExtend, "sign_type");
+		String payment_type = AlipayConfig.paymentType;//getValue(dbExtend, "payment_type");
+		String return_url = AlipayConfig.returnUrlWAP;//getValue(dbExtend, "return_url");
+		String notify_url = AlipayConfig.notifyUrlWAP;//getValue(dbExtend, "notify_url");
+		String error_url = AlipayConfig.errorUrl;//getValue(dbExtend, "error_url");
+//		String timeOut = AlipayConfig.timeOut;//getValue(dbExtend, "timeOut");
+		if ("".equals(reqUrl) || "".equals(partner) || "".equals(key) || "".equals(input_charset)
+			|| "".equals(sign_type) || "".equals(payment_type) || "".equals(return_url) || "".equals(notify_url) || "".equals(error_url)) {
+			logger.debug("[alipayWap] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
 		}
+
+		String globalUrl = Global.getConfig("epay.notify.url");
+		return_url = globalUrl + return_url;
+		notify_url = globalUrl + notify_url;
+		error_url = globalUrl + error_url;
+		reqUrl += reqUrl.contains("?") ? "_input_charset=" + input_charset : "?_input_charset=" + input_charset;
+
+		Double totalFee = Double.parseDouble(fee);
+		totalFee = totalFee / 100f;
+		// 构建sign
+		Map<String, String> map = new HashMap<String, String>();
+		DecimalFormat df = new DecimalFormat("######0.00");
+		map.put("service", service_wap);
+		map.put("partner", partner);
+		map.put("_input_charset", input_charset);
+		map.put("out_trade_no", orderId);
+		map.put("subject", subject);
+		map.put("total_fee", df.format(totalFee));
+		map.put("seller_id", partner);
+		map.put("payment_type", payment_type);
+		map.put("return_url", return_url);
+		map.put("notify_url", notify_url);
+		map.put("error_notify_url", error_url);
+
+		String showUrl = notify_url;
+		String temp = "amount=" + totalFee + "&orderId=" + orderId + "&status=5";
+		String sign = ValidataUtil.getValidataString("10001", temp);
+		if(showUrl.contains("?")){
+			showUrl = resultUrl + "&orderid=" + orderId + "&amount=" + totalFee + "&status=5&sign=" + sign;
+		} else {
+			showUrl = resultUrl + "?orderid=" + orderId + "&amount=" + totalFee + "&status=5&sign=" + sign;
+		}
+		map.put("show_url", showUrl);
+		List<String> list = new ArrayList<>();
+		list.add("sign");
+		list.add("sign_type");
+		map = ToolsUtil.paraFilter(map, list, true);
+		String prestr = alipayLinkString(map);
+		String mySign = alipaySign(prestr, key);
+		map.put("sign_type", sign_type);
+		map.put("sign", mySign);
+
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Map<String, String> extend = new HashMap<String, String>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", notify_url);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapToJson(map));
+		extend.put("shopCode", partner);
+
+		// 写入数据库epay的epay_oder_detail表中
+		logger.debug("[alipayWap]保存数据，调用insertPayOrderDetail()");
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("[alipayWap]保存detail表状态：{}", retInt);
+
+		logger.debug("[alipayWap]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("submitUrl", reqUrl);
+		payMap.put("service", service_wap);
+		payMap.put("partner", partner);
+		payMap.put("_input_charset", input_charset);
+		payMap.put("sign_type", sign_type);
+		payMap.put("sign", mySign);
+		payMap.put("out_trade_no", orderId);
+		payMap.put("subject", subject);
+		payMap.put("total_fee", totalFee);
+		payMap.put("seller_id", partner);
+		payMap.put("payment_type", payment_type);
+		payMap.put("return_url", return_url);
+		payMap.put("notify_url", notify_url);
+		payMap.put("error_notify_url", error_url);
+		payMap.put("rn_check", "T"); // 是否发起实名校验 T：发起实名校验； F：不发起实名校验。
+		payMap.put("show_url", showUrl);
+//		payMap.put("it_b_pay", timeOut + "m");
+		return payMap;
 	}
 
 	@Override
-	public Map<String, Object> alipayPc(Map<String, String> upTranData,
-			Map<String, Object> upExtend) throws Exception {
+	public Map<String, Object> alipayPc(Map<String, String> upTranData, Map<String, Object> upExtend) throws Exception {
 		logger.debug("[alipayPc] 支付开始...");
 		String orderId = getValue(upTranData, "orderId");
 		String subject = getValue(upTranData, "subject");
@@ -193,118 +167,92 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 		String ip = getValue(upTranData, "ip");
 		String tradeType = getValue(upTranData, "tradeType");
 		String appType = getValue(upTranData, "appType");
+		String interfaceName = getValue(upExtend, "interfaceName", null);
 		
 		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
 			logger.debug("[alipayPc] 缺少必要的参数！");
 			throw new Exception("缺少必要的参数！");
 		}
-		
+
+		String bkInterfaceVersion = AlipayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceName");
+		String reqUrl = AlipayConfig.reqUrl;//getValue(dbExtend, "req_url");
+		String partner = AlipayConfig.partner;//getValue(dbExtend, "partner");
+		String seller_email = AlipayConfig.sellerEmail;//getValue(dbExtend, "seller_email");
+		String key = AlipayConfig.key;//getValue(dbExtend, "key");
+		String input_charset = AlipayConfig.inputCharset;//getValue(dbExtend, "input_charset");
+		String sign_type = AlipayConfig.signType;//getValue(dbExtend, "sign_type");
+		String payment_type = AlipayConfig.paymentType;//getValue(dbExtend, "payment_type");
+		String return_url = AlipayConfig.returnUrlPC;//getValue(dbExtend, "return_url");
+		String notify_url = AlipayConfig.notifyUrlPC;//getValue(dbExtend, "notify_url");
+		String error_url = AlipayConfig.errorUrl;//getValue(dbExtend, "error_url");
+		String timeOut = AlipayConfig.timeOut;//getValue(dbExtend, "timeOut");
+		if ("".equals(reqUrl) || "".equals(partner) || "".equals(key) || "".equals(input_charset)
+			|| "".equals(sign_type) || "".equals(payment_type) || "".equals(return_url) || "".equals(notify_url) || "".equals(error_url)) {
+			logger.debug("[alipayPc] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
+		}
+
+		String globalUrl = Global.getConfig("epay.notify.url");
+		return_url = globalUrl + return_url;
+		notify_url = globalUrl + notify_url;
+		error_url = globalUrl + error_url;
+		reqUrl += reqUrl.contains("?") ? "_input_charset=" + input_charset : "?_input_charset=" + input_charset;
+
 		Double totalFee = Double.parseDouble(fee);
 		totalFee = totalFee / 100f;
-		
-		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);		
+		// 构建sign
+		Map<String, String> map = new HashMap<String, String>();
+		DecimalFormat df = new DecimalFormat("######0.00");
+		map.put("service", service_pc);
+		map.put("partner", partner);
+		map.put("seller_email", seller_email);
+		map.put("_input_charset", input_charset);
+		map.put("payment_type", payment_type);
+		map.put("out_trade_no", orderId);
+		map.put("subject", subject);
+		map.put("total_fee", df.format(totalFee));
+		map.put("return_url", return_url);
+		map.put("error_notify_url", error_url);
+		map.put("notify_url", notify_url);
+//		map.put("seller_id", partner);
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		logger.debug("[alipayPc] 查询配置数据，返回：" + lstData);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String reqUrl = getValue(dbExtend, "req_url");
-			String partner = getValue(dbExtend, "partner");
-			String seller_email = getValue(dbExtend, "seller_email");
-			String key = getValue(dbExtend, "key");
-			String input_charset = getValue(dbExtend, "input_charset");
-			String sign_type = getValue(dbExtend, "sign_type");
-			String payment_type = getValue(dbExtend, "payment_type");
-			String client_id = getValue(dbExtend, "client_id");
-			String private_key = getValue(dbExtend, "private_key");
-			String des_key = getValue(dbExtend, "des_key");
-			String log_path = getValue(dbExtend, "log_path");
-			String return_url = getValue(dbExtend, "return_url");
-			String notify_url = getValue(dbExtend, "notify_url");
-			String error_url = getValue(dbExtend, "error_url");
-			String timeOut = getValue(dbExtend, "timeOut");
-			timeOut = !TextUtils.isEmpty(timeOut) ? timeOut : "30";
-			if ("".equals(reqUrl) || "".equals(partner) || "".equals(key) || "".equals(input_charset) 
-				|| "".equals(sign_type) || "".equals(payment_type) || "".equals(return_url) || "".equals(notify_url) || "".equals(error_url)) {
-				logger.debug("[alipayPc] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-			
-			String globalUrl = Global.getConfig("epay.notify.url");
-			return_url = globalUrl + return_url;
-			notify_url = globalUrl + notify_url;
-			error_url = globalUrl + error_url;
-			reqUrl += reqUrl.contains("?") ? "_input_charset=" + input_charset : "?_input_charset=" + input_charset;
+		map = alipayParaFilter(map);
+		String prestr = alipayLinkString(map);
+		String mySign = alipaySign(prestr, key);
 
-			// 构建sign
-			Map<String, String> map = new HashMap<String, String>();
-			DecimalFormat df = new DecimalFormat("######0.00");
-			map.put("service", service_pc);
-			map.put("partner", partner);
-			map.put("seller_email", seller_email);
-			map.put("_input_charset", input_charset);
-			map.put("payment_type", payment_type);
-			map.put("out_trade_no", orderId);
-			map.put("subject", subject);
-			map.put("total_fee", df.format(totalFee));
-			map.put("return_url", return_url);
-			map.put("error_notify_url", error_url);
-			map.put("notify_url", notify_url);
-//			map.put("seller_id", partner);
-			
-			map = alipayParaFilter(map);
-			String prestr = alipayLinkString(map);
-			String mySign = alipaySign(prestr, key);
-		
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			Map<String, String> extend = new HashMap<String, String>();
-			extend.put("merUrl", notify_url);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(map));
-			extend.put("shopCode", partner);
-			
-			// 写入数据库epay的epay_oder_detail表中
-			logger.debug("[alipayPc]保存数据，调用insertPayOrderDetail()");
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("[alipayPc]保存detail表状态：" + retInt);
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Map<String, String> extend = new HashMap<String, String>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", notify_url);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapToJson(map));
+		extend.put("shopCode", partner);
 
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("submitUrl", reqUrl);
-			payMap.put("service", service_pc);
-			payMap.put("_input_charset", input_charset);
-			payMap.put("out_trade_no", orderId);
-			payMap.put("partner", partner);
-			payMap.put("payment_type", payment_type);
-			payMap.put("seller_email", seller_email);
-			payMap.put("sign_type", sign_type);
-			payMap.put("sign", mySign);
-			payMap.put("subject", subject);
-			payMap.put("total_fee", totalFee);
-			payMap.put("return_url", return_url);
-			payMap.put("error_notify_url", error_url);
-			payMap.put("notify_url", notify_url);
-			payMap.put("it_b_pay", timeOut + "m");
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
-		}
+		// 写入数据库epay的epay_oder_detail表中
+		logger.debug("[alipayPc]保存数据，调用insertPayOrderDetail()");
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("[alipayPc]保存detail表状态：" + retInt);
+
+		logger.debug("[alipayPc]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("submitUrl", reqUrl);
+		payMap.put("service", service_pc);
+		payMap.put("_input_charset", input_charset);
+		payMap.put("out_trade_no", orderId);
+		payMap.put("partner", partner);
+		payMap.put("payment_type", payment_type);
+		payMap.put("seller_email", seller_email);
+		payMap.put("sign_type", sign_type);
+		payMap.put("sign", mySign);
+		payMap.put("subject", subject);
+		payMap.put("total_fee", totalFee);
+		payMap.put("return_url", return_url);
+		payMap.put("error_notify_url", error_url);
+		payMap.put("notify_url", notify_url);
+		payMap.put("it_b_pay", timeOut + "m");
+		return payMap;
 	}
 
 	@Override
@@ -335,21 +283,8 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 				throw new Exception("订单号：" + orderId + "不存在！");
 			}
 
-			Map<String, Object> rd = new HashMap<String, Object>();
-			rd.put("payCompany", "alipay_query");
-			rd.put("sysId", sysId);
-			rd.put("type", "query");
-			List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-			logger.debug("[notifyFront] 查询配置数据，返回：" + lstData);
-			if (null == lstData || lstData.size() == 0) {
-				logger.debug("[notifyFront] 订单号：" + orderId + "获取查询参数为空！");
-				throw new Exception("订单号：" + orderId + "获取查询参数为空！");
-			}
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String key = getValue(dbExtend, "key");
+
+			String key = AlipayConfig.key;
 
 			//2.验签
 			Map<String, String> signMap = alipayParaFilter(map);
@@ -373,7 +308,7 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 			if ("TRADE_SUCCESS".equals(status) && "TRADE_SUCCESS".equals(qStatus)) {
 				// 4.更新Epay的数据
 				notify_time = DateUtils.DateTimeToYYYYMMDDhhmmss(DateUtils.StringToDateTime(notify_time));
-				rd = new HashMap<String, Object>();
+				Map<String, Object> rd = new HashMap<String, Object>();
 				rd.put("TranSerialNo", TranSerialNo);
 				rd.put("notifyDate", notify_time);
 				rd.put("tranStat", ReturnCode.getCode(status));
@@ -401,7 +336,7 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 
 				String tranMapJson = ToolsUtil.mapToJson(pMap);
 				String tranData = Base64Util.encodeBase64(tranMapJson, "UTF-8");
-				sign = validataSv.getValidataString("10001", tranData);
+				sign = ValidataUtil.getValidataString("10001", tranData);
 
 				Map<String, Object> param = new HashMap<String, Object>();
 				param.put("tranData", tranData);
@@ -444,22 +379,8 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 				throw new Exception("订单号：" + orderId + "不存在！");
 			}
 
-			Map<String, Object> rd = new HashMap<String, Object>();
-			rd.put("payCompany", "alipay_query");
-			rd.put("sysId", sysId);
-			rd.put("type", "query");
-			List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-			logger.debug("[notifyBack] 查询配置数据，返回：" + lstData);
-			if (null == lstData || lstData.size() == 0) {
-				logger.debug("[notifyBack] 订单号：" + orderId + "获取查询参数为空！");
-				throw new Exception("订单号：" + orderId + "获取查询参数为空！");
-			}
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String key = getValue(dbExtend, "key");
 
+			String key = AlipayConfig.key;
 			//2.验签
 			Map<String, String> signMap = alipayParaFilter(map);
 			String prestr = alipayLinkString(signMap);
@@ -482,7 +403,7 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 			if ("TRADE_SUCCESS".equals(status) && "TRADE_SUCCESS".equals(qStatus)) {
 				// 4.更新Epay的数据
 				notify_time = DateUtils.DateTimeToYYYYMMDDhhmmss(DateUtils.StringToDateTime(notify_time));
-				rd = new HashMap<String, Object>();
+				Map<String, Object> rd = new HashMap<String, Object>();
 				rd.put("TranSerialNo", TranSerialNo);
 				rd.put("notifyDate", notify_time);
 				rd.put("tranStat", ReturnCode.getCode(status));
@@ -511,7 +432,7 @@ public class AlipayManagerSvImpl extends BaseSvImpl implements IAlipayManagerSv 
 
 				String tranMapJson = ToolsUtil.mapToJson(pMap);
 				String tranData = Base64Util.encodeBase64(tranMapJson, "UTF-8");
-				String msign = validataSv.getValidataString("10001", tranData);
+				String msign = ValidataUtil.getValidataString("10001", tranData);
 
 				Map<String, Object> params = new HashMap<String, Object>();
 				params.put("tranData", tranData);

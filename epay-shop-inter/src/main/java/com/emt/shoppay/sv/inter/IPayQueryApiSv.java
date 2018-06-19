@@ -19,5 +19,5 @@ public interface IPayQueryApiSv {
 
 	Map<String, String>  queryFromUnionpay(String sysId, String orderId, String orderDate);
 
-	Map<String, String> queryFromWeixinpay(String orderId, String payCompany);
+	Map<String, String> queryFromWeixinpay(String orderId, String sysId);
 }

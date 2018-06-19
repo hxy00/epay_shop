@@ -1,8 +1,6 @@
 package com.emt.shoppay.controller;
 
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
 import com.emt.shoppay.sv.inter.IIcbcManagerSv;
-import com.emt.shoppay.sv.inter.IValidataSv;
 import com.emt.shoppay.util.LogAnnotation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,15 +21,6 @@ import java.util.Map;
 public class ICBCController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
-//	@Resource(name = "icbcOrderPaySvImpl", type = IcbcOrderPaySvImpl.class)
-//	private IIcbcOrderPaySv icbcOrderPaySv;
-
-//	@Resource(name = "hishopOrderInSv", type = HishopOrderInSv.class)
-//	private IHishopOrderInSv hishopOrderInSv;
-
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
-	
 	@Resource
 	private IIcbcManagerSv iIcbcManagerSv;
 

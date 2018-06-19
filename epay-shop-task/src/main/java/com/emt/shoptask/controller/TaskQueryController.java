@@ -1,8 +1,8 @@
 package com.emt.shoptask.controller;
 
 import com.emt.shoppay.sv.inter.IPayQueryApiSv;
-import com.emt.shoptask.sv.impl.PayQuerySvImpl;
 import com.emt.shoptask.sv.inter.IPayQuerySv;
+import org.apache.http.util.TextUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +61,7 @@ public class TaskQueryController {
     }
 
     @RequestMapping("/queryFromICBC")
+    @ResponseBody
     public String queryFromICBC(String orderId, String orderDate){
         Map<String, String> map = iPayQueryApiSv.queryFromIcbc("400001", orderId, orderDate);
         logger.debug(map.toString());
@@ -78,7 +79,7 @@ public class TaskQueryController {
     @RequestMapping("/queryFromWeixinpay")
     @ResponseBody
     public String queryFromWeixinpay(String orderId, String orderDate){
-        Map<String, String> map = iPayQueryApiSv.queryFromWeixinpay("", "");
+        Map<String, String> map = iPayQueryApiSv.queryFromWeixinpay(orderId, "400001");
         logger.debug(map.toString());
         return map.toString();
     }
@@ -87,6 +88,6 @@ public class TaskQueryController {
     @ResponseBody
     public String queryOrderState(String orderId){
         String result = iPayQuerySv.queryOrderState(orderId);
-        return result;
+        return !TextUtils.isEmpty(result) ? result : "没有查询到数据";
     }
 }

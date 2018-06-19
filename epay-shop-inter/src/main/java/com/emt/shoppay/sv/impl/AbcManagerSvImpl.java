@@ -4,11 +4,13 @@ import com.abc.pay.client.Constants;
 import com.abc.pay.client.JSON;
 import com.abc.pay.client.ebus.PaymentRequest;
 import com.emt.shoppay.dao.inter.IEpayParaConfigDao;
+import com.emt.shoppay.pojo.ABCPayConfig;
 import com.emt.shoppay.sv.inter.IAbcManagerSv;
 import com.emt.shoppay.sv.inter.IPayQueryApiSv;
 import com.emt.shoppay.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.MapUtils;
+import org.apache.http.util.TextUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,9 +31,6 @@ import java.util.*;
 @Service
 public class AbcManagerSvImpl extends BaseSvImpl implements IAbcManagerSv {
 	private Logger logger = LoggerFactory.getLogger(getClass());
-	
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
 
 	@Autowired
 	private IPayQueryApiSv iPayQueryApiSv;
@@ -46,149 +45,128 @@ public class AbcManagerSvImpl extends BaseSvImpl implements IAbcManagerSv {
 		String ip = getValue(upTranData, "ip");
 		String tradeType = getValue(upTranData, "tradeType");
 		String appType = getValue(upTranData, "appType");
-		
-		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
+		String interfaceName = getValue(upExtend, "interfaceName");
+		if (TextUtils.isEmpty(orderId) || TextUtils.isEmpty(fee) || TextUtils.isEmpty(resultUrl) || TextUtils.isEmpty(subject)) {
 			logger.debug("[abcPay] 缺少必要的参数！");
 			throw new Exception("缺少必要的参数！");
 		}
-		
+		//获取配置参数
+		String bkInterfaceVersion = ABCPayConfig.bkInterfaceVersion;
+		String MerchantID = ABCPayConfig.merchantID;//getValue(dbExtend, "MerchantID");
+		String PayTypeID = ABCPayConfig.payTypeID;//getValue(dbExtend, "PayTypeID");
+		String notifyUrl = ABCPayConfig.notifyUrlPC;//getValue(dbExtend, "notify_url");
+		String configIndex = ABCPayConfig.configIndex;//dbExtend.get("configIndex");//getValue(dbExtend, "configIndex");
+		String timeOut = ABCPayConfig.timeOut;//getValue(dbExtend, "timeOut");
+		if (TextUtils.isEmpty(MerchantID) || TextUtils.isEmpty(PayTypeID) || TextUtils.isEmpty(notifyUrl)
+				|| TextUtils.isEmpty(configIndex) || TextUtils.isEmpty(timeOut)) {
+			logger.debug("[abcPay] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
+		}
+
+		String merNotifyUrl = Global.getConfig("epay.notify.url") + notifyUrl;
+		Date date = new Date();
+		String dateStr = getDateTime(date, "yyyy/MM/dd");
+		String timeStr = getDateTime(date, "HH:mm:ss");
+		String orderTimeOutDate = getOrderTimeoutDate(date, Integer.valueOf(timeOut));
+
+		//处理金额
 		Double totalFee = Double.parseDouble(fee);
 		totalFee = totalFee / 100f;
-		
-		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);		
-
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		logger.debug("[abcPay] 查询配置数据，返回：" + lstData);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String MerchantID = getValue(dbExtend, "MerchantID");
-			String PayTypeID = getValue(dbExtend, "PayTypeID");
-			String notifyUrl = getValue(dbExtend, "notify_url");
-			String configIndex = dbExtend.get("configIndex");//getValue(dbExtend, "configIndex");
-			String timeOut = getValue(dbExtend, "timeOut");
-			if ("".equals(PayTypeID) || "".equals(notifyUrl) || "".equals(configIndex) || "".equals(timeOut)) {
-				logger.debug("[abcPay] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-			
-			String merUrl = Global.getConfig("epay.notify.url") + notifyUrl;
-			Date date = new Date();
-			String dateStr = getDateTime(date, "yyyy/MM/dd");
-			String timeStr = getDateTime(date, "HH:mm:ss");
-			String orderTimeOutDate = getOrderTimeoutDate(date, Integer.valueOf(timeOut));
-//			String notifyUrl = PaySetting.getAbcBackUrl(type);
-
-			//1、生成订单对象
-			PaymentRequest tPaymentRequest = new PaymentRequest();
-			tPaymentRequest.dicOrder.put("PayTypeID", PayTypeID);                  		//设定交易类型ImmediatePay
-			tPaymentRequest.dicOrder.put("OrderDate", dateStr);                  		//设定订单日期 （必要信息 - YYYY/MM/DD）
-			tPaymentRequest.dicOrder.put("OrderTime", timeStr);                  		//设定订单时间 （必要信息 - HH:MM:SS）
-			tPaymentRequest.dicOrder.put("commitVoTimeoutDate", orderTimeOutDate);     	//设定订单有效期
-			tPaymentRequest.dicOrder.put("OrderNo", orderId);            				//设定订单编号 （必要信息）
-			tPaymentRequest.dicOrder.put("CurrencyCode", "156");             			//设定交易币种
-			tPaymentRequest.dicOrder.put("OrderAmount", totalFee);      				//设定交易金额
-			tPaymentRequest.dicOrder.put("InstallmentMark", "0");       				//分期标识
-			tPaymentRequest.dicOrder.put("CommodityType", "0202");           			//设置商品种类
+		//1、生成订单对象
+		PaymentRequest tPaymentRequest = new PaymentRequest();
+		tPaymentRequest.dicOrder.put("PayTypeID", PayTypeID);                  		//设定交易类型ImmediatePay
+		tPaymentRequest.dicOrder.put("OrderDate", dateStr);                  		//设定订单日期 （必要信息 - YYYY/MM/DD）
+		tPaymentRequest.dicOrder.put("OrderTime", timeStr);                  		//设定订单时间 （必要信息 - HH:MM:SS）
+		tPaymentRequest.dicOrder.put("commitVoTimeoutDate", orderTimeOutDate);     	//设定订单有效期
+		tPaymentRequest.dicOrder.put("OrderNo", orderId);            				//设定订单编号 （必要信息）
+		tPaymentRequest.dicOrder.put("CurrencyCode", "156");             			//设定交易币种
+		tPaymentRequest.dicOrder.put("OrderAmount", totalFee);      				//设定交易金额
+		tPaymentRequest.dicOrder.put("InstallmentMark", "0");       				//分期标识
+		tPaymentRequest.dicOrder.put("CommodityType", "0202");           			//设置商品种类
 //			tPaymentRequest.dicOrder.put("BuyIP", commitVo.getBuyIP());                 //IP
-			tPaymentRequest.dicOrder.put("ExpiredDate", "30");               			//设定订单保存时间(天)
+		tPaymentRequest.dicOrder.put("ExpiredDate", "30");               			//设定订单保存时间(天)
 
-			//2、订单明细
-			LinkedHashMap<String, Object> orderitem = new LinkedHashMap<String, Object>();
-			orderitem.put("ProductID", "");												//商品代码，预留字段
-			orderitem.put("ProductName", subject);										//商品名称
-			orderitem.put("UnitPrice", totalFee);										//商品总价
-			orderitem.put("Qty", "1");													//商品数量
-			orderitem.put("ProductRemarks", subject + "-农行支付"); 						//商品备注项
-			orderitem.put("ProductType", "茅台电商产品");									//商品类型
-			orderitem.put("ProductDiscount", "0.0");									//商品折扣
-			tPaymentRequest.orderitems.put(1, orderitem);
+		//2、订单明细
+		LinkedHashMap<String, Object> orderitem = new LinkedHashMap<String, Object>();
+		orderitem.put("ProductID", "");												//商品代码，预留字段
+		orderitem.put("ProductName", subject);										//商品名称
+		orderitem.put("UnitPrice", totalFee);										//商品总价
+		orderitem.put("Qty", "1");													//商品数量
+		orderitem.put("ProductRemarks", subject + "-农行支付"); 						//商品备注项
+		orderitem.put("ProductType", "茅台电商产品");									//商品类型
+		orderitem.put("ProductDiscount", "0.0");									//商品折扣
+		tPaymentRequest.orderitems.put(1, orderitem);
 
-			//3、生成支付请求对象
-			String paymentType = "A";
-			tPaymentRequest.dicRequest.put("PaymentType", paymentType);            		//设定支付类型(1：农行卡支付 2：国际卡支付 3：农行贷记卡支付 5:基于第三方的跨行支付 A:支付方式合并 6：银联跨行支付，7:对公户)
-			String paymentLinkType  = "1";												                                      
-			if ("abc_pay_wap".equals(interfaceName)) {
-				paymentLinkType = "2";
-			}
-			tPaymentRequest.dicRequest.put("PaymentLinkType", paymentLinkType);    		//设定支付接入方式(1：internet网络接入 2：手机网络接入 3:数字电视网络接入 4:智能客户端，*必输)
-			if (paymentType.equals(Constants.PAY_TYPE_UCBP) && paymentLinkType.equals(Constants.PAY_LINK_TYPE_MOBILE)) {
-			    tPaymentRequest.dicRequest.put("UnionPayLinkType", "0");  				//当支付类型为6，支付接入方式为2的条件满足时，需要设置银联跨行移动支付接入方式
-			}
-			tPaymentRequest.dicRequest.put("NotifyType", "1");							//通知方式(0：URL页面通知，1：服务器通知)
-			tPaymentRequest.dicRequest.put("ResultNotifyURL", merUrl);    				//设定通知URL地址
-			tPaymentRequest.dicRequest.put("IsBreakAccount", "0");      				//设定交易是否分账
-			
-			//4、组装保存的参数
-			Map<String, String> signMap = new HashMap<>();
-			signMap.put("PayTypeID", "ImmediatePay");
-			signMap.put("OrderDate", dateStr);
-			signMap.put("OrderTime", timeStr);
-			signMap.put("commitVoTimeoutDate", orderTimeOutDate);
-			signMap.put("OrderNo", orderId);
-			signMap.put("CurrencyCode", "156");
-			signMap.put("OrderAmount", String.valueOf(totalFee));
-			signMap.put("InstallmentMark", "0");
-			signMap.put("CommodityType", "0201");
-			signMap.put("ExpiredDate", "30");
-			signMap.put("ProductID", "");
-			signMap.put("ProductName", subject);
-			signMap.put("UnitPrice", String.valueOf(totalFee));
-			signMap.put("Qty", "1");
-			signMap.put("ProductRemarks", subject + "-农行支付");
-			signMap.put("ProductType", "酒类消费");
-			signMap.put("ProductDiscount", "0.0");
-			signMap.put("PaymentType", paymentType);
-			signMap.put("PaymentLinkType", paymentLinkType);
-			signMap.put("NotifyType", "1");
-			signMap.put("ResultNotifyURL", merUrl);
-			signMap.put("IsBreakAccount", "0");
-
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			Map<String, String> extend = new HashMap<>();
-			extend.put("merUrl", merUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(signMap));
-			extend.put("shopCode", MerchantID);
-			
-			///5、写入数据库epay的epay_oder_detail表中
-			logger.debug("[abcPay]保存数据，调用insertPayOrderDetail()");
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("保存detail表状态：{}", retInt);
-			
-			//6、发起支付请求
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			JSON json = tPaymentRequest.extendPostRequest(Integer.valueOf(configIndex));
-			String ReturnCode = json.GetKeyValue("ReturnCode");
-			String ErrorMessage = json.GetKeyValue("ErrorMessage");
-			logger.debug("[abc_pay] ReturnCode   = [" + ReturnCode + "]");
-			logger.debug("[abc_pay] ErrorMessage = [" + ErrorMessage + "]");
-			if (ReturnCode.equals("0000")) {
-				logger.debug("[abc_pay] PaymentURL-->" + json.GetKeyValue("PaymentURL"));
-				payMap.put("PaymentURL", json.GetKeyValue("PaymentURL"));
-			} else {
-				throw new Exception("支付失败：" + ErrorMessage);
-			}
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
+		//3、生成支付请求对象
+		String paymentType = "A";
+		tPaymentRequest.dicRequest.put("PaymentType", paymentType);            		//设定支付类型(1：农行卡支付 2：国际卡支付 3：农行贷记卡支付 5:基于第三方的跨行支付 A:支付方式合并 6：银联跨行支付，7:对公户)
+		String paymentLinkType  = "1";
+		if ("abc_pay_wap".equals(interfaceName)) {
+			paymentLinkType = "2";
 		}
+		tPaymentRequest.dicRequest.put("PaymentLinkType", paymentLinkType);    		//设定支付接入方式(1：internet网络接入 2：手机网络接入 3:数字电视网络接入 4:智能客户端，*必输)
+		if (paymentType.equals(Constants.PAY_TYPE_UCBP) && paymentLinkType.equals(Constants.PAY_LINK_TYPE_MOBILE)) {
+			tPaymentRequest.dicRequest.put("UnionPayLinkType", "0");  				//当支付类型为6，支付接入方式为2的条件满足时，需要设置银联跨行移动支付接入方式
+		}
+		tPaymentRequest.dicRequest.put("NotifyType", "1");							//通知方式(0：URL页面通知，1：服务器通知)
+		tPaymentRequest.dicRequest.put("ResultNotifyURL", merNotifyUrl);    				//设定通知URL地址
+		tPaymentRequest.dicRequest.put("IsBreakAccount", "0");      				//设定交易是否分账
+
+		//4、组装保存的参数
+		Map<String, String> signMap = new HashMap<>();
+		signMap.put("PayTypeID", "ImmediatePay");
+		signMap.put("OrderDate", dateStr);
+		signMap.put("OrderTime", timeStr);
+		signMap.put("commitVoTimeoutDate", orderTimeOutDate);
+		signMap.put("OrderNo", orderId);
+		signMap.put("CurrencyCode", "156");
+		signMap.put("OrderAmount", String.valueOf(totalFee));
+		signMap.put("InstallmentMark", "0");
+		signMap.put("CommodityType", "0201");
+		signMap.put("ExpiredDate", "30");
+		signMap.put("ProductID", "");
+		signMap.put("ProductName", subject);
+		signMap.put("UnitPrice", String.valueOf(totalFee));
+		signMap.put("Qty", "1");
+		signMap.put("ProductRemarks", subject + "-农行支付");
+		signMap.put("ProductType", "酒类消费");
+		signMap.put("ProductDiscount", "0.0");
+		signMap.put("PaymentType", paymentType);
+		signMap.put("PaymentLinkType", paymentLinkType);
+		signMap.put("NotifyType", "1");
+		signMap.put("ResultNotifyURL", merNotifyUrl);
+		signMap.put("IsBreakAccount", "0");
+
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Map<String, String> extend = new HashMap<>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", merNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapToJson(signMap));
+		extend.put("shopCode", MerchantID);
+
+		///5、写入数据库epay的epay_oder_detail表中
+		logger.debug("[abcPay]保存数据，调用insertPayOrderDetail()");
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("保存detail表状态：{}", retInt);
+
+		logger.debug("[abcPay]发起支付请求......");
+		//6、发起支付请求
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		JSON json = tPaymentRequest.extendPostRequest(Integer.valueOf(configIndex));
+		String ReturnCode = json.GetKeyValue("ReturnCode");
+		String ErrorMessage = json.GetKeyValue("ErrorMessage");
+		logger.debug("[abc_pay] ReturnCode   = [" + ReturnCode + "]");
+		logger.debug("[abc_pay] ErrorMessage = [" + ErrorMessage + "]");
+		if (ReturnCode.equals("0000")) {
+			logger.debug("[abc_pay] PaymentURL-->" + json.GetKeyValue("PaymentURL"));
+			payMap.put("PaymentURL", json.GetKeyValue("PaymentURL"));
+		} else {
+			throw new Exception("支付失败：" + ErrorMessage);
+		}
+		return payMap;
 	}
 
 	@Override

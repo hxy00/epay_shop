@@ -2,6 +2,7 @@ package com.emt.shoppay.sv.impl;
 
 import cn.com.infosec.icbc.ReturnValue;
 import com.emt.shoppay.dao.inter.IEpayParaConfigDao;
+import com.emt.shoppay.pojo.IcbcConfig;
 import com.emt.shoppay.pojo.IcbcOrderInfoPcVo;
 import com.emt.shoppay.pojo.IcbcOrderInfoWapVo;
 import com.emt.shoppay.sv.inter.IIcbcManagerSv;
@@ -38,9 +39,6 @@ public class IcbcManagerSvImpl extends BaseSvImpl implements IIcbcManagerSv {
 	private static String flag = operatingSystem.equals("Linux") ? "/" : "";
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
-	
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
 
 	@Autowired
 	private IPayQueryApiSv iPayQueryApiSv;
@@ -55,121 +53,97 @@ public class IcbcManagerSvImpl extends BaseSvImpl implements IIcbcManagerSv {
 		String ip = getValue(upTranData, "ip");
 		String tradeType = getValue(upTranData, "tradeType");
 		String appType = getValue(upTranData, "appType");
+		String interfaceName = getValue(upExtend, "interfaceName");
+		String qid = getValue(upExtend, "qid");
 		
 		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
 			logger.debug("[abcPay] 缺少必要的参数！");
 			throw new Exception("缺少必要的参数！");
 		}
-		
-		String interfaceName = getValue(upExtend, "interfaceName");
-		String interfaceVersion = getValue(upExtend, "interfaceVersion");
-		String qid = getValue(upExtend, "qid");
-		String clientType = getValue(upExtend, "clientType");
-		String merReference = getValue(upExtend, "merReference");
-		String busiid = getValue(upExtend, "busiid");
-		String sysId = getValue(upExtend, "sysId");		
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String crtFile = getValue(dbExtend, "crtFile");
-			String keyFile = getValue(dbExtend, "keyFile");
-			String password = getValue(dbExtend, "password");
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String merID = getValue(dbExtend, "merID");
-			String merAcct = getValue(dbExtend, "merAcct");
-			String req_url = getValue(dbExtend, "req_url");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");
-			String timeOut = getValue(dbExtend, "timeOut");
-			String crtFilePathKey = getValue(dbExtend, "crtFilePathKey");
-			String keyFilePathKey = getValue(dbExtend, "keyFilePathKey");
+		String password = IcbcConfig.password;//getValue(dbExtend, "password");
+		String bkInterfaceName = IcbcConfig.bkInterfaceNameWAP;//getValue(dbExtend, "interfaceName");
+		String bkInterfaceVersion = IcbcConfig.bkInterfaceVersionWAP;//getValue(dbExtend, "interfaceVersion");
+		String merID = IcbcConfig.merID;//getValue(dbExtend, "merID");
+		String merAcct = IcbcConfig.merAcct;//getValue(dbExtend, "merAcct");
+		String req_url = IcbcConfig.reqUrlWap;//getValue(dbExtend, "req_url");
+		String payNotifyUrl = IcbcConfig.notifyUrlWAP;//getValue(dbExtend, "notify_url");
+		String timeOut = IcbcConfig.timeOut;//getValue(dbExtend, "timeOut");
+		String crtFilePath = IcbcConfig.crtFilePath;//getValue(dbExtend, "crtFilePathKey");
+		String keyFilePath = IcbcConfig.keyFilePath;//getValue(dbExtend, "keyFilePathKey");
 
-			if ("".equals(crtFile) || "".equals(keyFile) || "".equals(password) || "".equals(bkInterfaceName)|| 
-					"".equals(bkInterfaceVersion) || "".equals(merID) || "".equals(merAcct) || "".equals(req_url) ||
-					"".equals(payNotifyUrl) || "".equals(timeOut) || TextUtils.isEmpty(crtFilePathKey) || TextUtils.isEmpty(keyFilePathKey)) {
-				logger.debug("[abcPay] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-
-			if("Linux".equals(operatingSystem)){
-				crtFile = Config.getConfig("pay/icbc/icbc_conf_linux.properties", crtFilePathKey);
-				keyFile = Config.getConfig("pay/icbc/icbc_conf_linux.properties", keyFilePathKey);
-			} else {
-				crtFile = Config.getConfig("pay/icbc/icbc_conf_windows.properties", crtFilePathKey);
-				keyFile = Config.getConfig("pay/icbc/icbc_conf_windows.properties", keyFilePathKey);
-			}
-			
-			byte[] bcert = this.getFileByte(crtFile);
-			byte[] bkey = this.getFileByte(keyFile);
-			char[] keyPass = password.toCharArray();
-
-			Integer totalFee = Integer.valueOf(fee);
-			payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			IcbcOrderInfoWapVo orderInfo = new IcbcOrderInfoWapVo();
-			orderInfo.setMerID(merID);
-			orderInfo.setMerAcct(merAcct);
-			orderInfo.setAmount(totalFee);
-			orderInfo.setOrderid(orderId);
-			orderInfo.setGoodsName(subject);
-			orderInfo.setOrderDate(orderDate);
-			orderInfo.setMerURL(payNotifyUrl);
-			orderInfo.setQid(Long.valueOf(qid));
-			String tranDataxml = orderInfo.toTranData();
-			// tranDataxml签名后的签名数据
-			byte[] sign = ReturnValue.sign(tranDataxml.getBytes(), tranDataxml.getBytes().length, bkey, keyPass);
-			if (sign == null) {
-				throw new Exception("签名失败");
-			} else {
-				logger.debug("ICBC 签名成功");
-			}
-
-			// base64编码
-			byte[] EncSign = ReturnValue.base64enc(sign);
-			String SignMsgBase64 = (new String(EncSign)).toString();// 签名信息BASE64编码
-			logger.debug("ICBC 签名信息BASE64编码 : {}", SignMsgBase64);
-
-			byte[] EncCert = ReturnValue.base64enc(bcert);
-			String CertBase64 = new String(EncCert).toString();// 证书公钥BASE64编码
-			logger.debug("ICBC 证书公钥BASE64编码 : {}", CertBase64);
-
-			byte[] base64 = ReturnValue.base64enc(tranDataxml.getBytes());
-			String tranDataBase64 = new String(base64, "GBK");
-
-			byte[] bxml = ReturnValue.base64dec(tranDataBase64.getBytes());
-			logger.debug("tranData base64dec: {}", new String(bxml));
-
-			Map<String, String> extend = new HashMap<>();
-			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", orderInfo.toTranData());
-			extend.put("shopCode", merID);
-
-			// 写入数据库epay的epay_oder_detail表中
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("保存detail表状态：{}", retInt);
-			
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("interfaceName", bkInterfaceName);
-			payMap.put("interfaceVersion", bkInterfaceVersion);
-			payMap.put("tranData", tranDataBase64);
-			payMap.put("merSignMsg", SignMsgBase64);
-			payMap.put("merCert", CertBase64);
-			payMap.put("clientType", 0);
-			payMap.put("req_url", req_url);
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
+		if ("".equals(password) || "".equals(bkInterfaceName)||
+				"".equals(bkInterfaceVersion) || "".equals(merID) || "".equals(merAcct) || "".equals(req_url) ||
+				"".equals(payNotifyUrl) || "".equals(timeOut) || TextUtils.isEmpty(crtFilePath) || TextUtils.isEmpty(keyFilePath)) {
+			logger.debug("[ICBC Pay] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
 		}
+		String crtFile = IcbcConfig.getCrtFilePath(operatingSystem, crtFilePath);
+		String keyFile = IcbcConfig.getKeyFilePath(operatingSystem, keyFilePath);
+
+		byte[] bcert = this.getFileByte(crtFile);
+		byte[] bkey = this.getFileByte(keyFile);
+		char[] keyPass = password.toCharArray();
+
+		Integer totalFee = Integer.valueOf(fee);
+		payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		IcbcOrderInfoWapVo orderInfo = new IcbcOrderInfoWapVo();
+		orderInfo.setMerID(merID);
+		orderInfo.setMerAcct(merAcct);
+		orderInfo.setAmount(totalFee);
+		orderInfo.setOrderid(orderId);
+		orderInfo.setGoodsName(subject);
+		orderInfo.setOrderDate(orderDate);
+		orderInfo.setMerURL(payNotifyUrl);
+		orderInfo.setQid(Long.valueOf(qid));
+		String tranDataxml = orderInfo.toTranData();
+		// tranDataxml签名后的签名数据
+		byte[] sign = ReturnValue.sign(tranDataxml.getBytes(), tranDataxml.getBytes().length, bkey, keyPass);
+		if (sign == null) {
+			throw new Exception("签名失败");
+		} else {
+			logger.debug("ICBC 签名成功");
+		}
+
+		// base64编码
+		byte[] EncSign = ReturnValue.base64enc(sign);
+		String SignMsgBase64 = (new String(EncSign)).toString();// 签名信息BASE64编码
+		logger.debug("ICBC 签名信息BASE64编码 : {}", SignMsgBase64);
+
+		byte[] EncCert = ReturnValue.base64enc(bcert);
+		String CertBase64 = new String(EncCert).toString();// 证书公钥BASE64编码
+		logger.debug("ICBC 证书公钥BASE64编码 : {}", CertBase64);
+
+		byte[] base64 = ReturnValue.base64enc(tranDataxml.getBytes());
+		String tranDataBase64 = new String(base64, "GBK");
+
+		byte[] bxml = ReturnValue.base64dec(tranDataBase64.getBytes());
+		logger.debug("tranData base64dec: {}", new String(bxml));
+
+		Map<String, String> extend = new HashMap<>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", payNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", orderInfo.toTranData());
+		extend.put("shopCode", merID);
+
+		// 写入数据库epay的epay_oder_detail表中
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("保存detail表状态：{}", retInt);
+
+		logger.debug("[icbcWapPay]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("interfaceName", bkInterfaceName);
+		payMap.put("interfaceVersion", bkInterfaceVersion);
+		payMap.put("tranData", tranDataBase64);
+		payMap.put("merSignMsg", SignMsgBase64);
+		payMap.put("merCert", CertBase64);
+		payMap.put("clientType", 0);
+		payMap.put("req_url", req_url);
+		return payMap;
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -195,111 +169,91 @@ public class IcbcManagerSvImpl extends BaseSvImpl implements IIcbcManagerSv {
 		String merReference = getValue(upExtend, "merReference");
 		String busiid = getValue(upExtend, "busiid");
 		String sysId = getValue(upExtend, "sysId");
-		
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String crtFile = getValue(dbExtend, "crtFile");
-			String keyFile = getValue(dbExtend, "keyFile");
-			String password = getValue(dbExtend, "password");
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String merID = getValue(dbExtend, "merID");
-			String merAcct = getValue(dbExtend, "merAcct");
-			String req_url = getValue(dbExtend, "req_url");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");
-			String timeOut = getValue(dbExtend, "timeOut");
-			String crtFilePathKey = getValue(dbExtend, "crtFilePathKey");
-			String keyFilePathKey = getValue(dbExtend, "keyFilePathKey");
 
-			if ("".equals(password) || "".equals(bkInterfaceName)||
-					"".equals(bkInterfaceVersion) || "".equals(merID) || "".equals(merAcct) || "".equals(req_url) ||
-					"".equals(payNotifyUrl) || "".equals(timeOut) || TextUtils.isEmpty(crtFilePathKey) || TextUtils.isEmpty(keyFilePathKey)) {
-				logger.debug("[icbcPay] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
 
-			if("Linux".equals(operatingSystem)){
-				crtFile = Config.getConfig("pay/icbc/icbc_conf_linux.properties", crtFilePathKey);
-				keyFile = Config.getConfig("pay/icbc/icbc_conf_linux.properties", keyFilePathKey);
-			} else {
-				crtFile = Config.getConfig("pay/icbc/icbc_conf_windows.properties", crtFilePathKey);
-				keyFile = Config.getConfig("pay/icbc/icbc_conf_windows.properties", keyFilePathKey);
-			}
-			
-//			crtFile = SystemUtil.getClassPath() + crtFile;
-//			keyFile = SystemUtil.getClassPath() + keyFile;
-			
-			byte[] bcert = this.getFileByte(crtFile);
-			byte[] bkey = this.getFileByte(keyFile);
-			char[] keyPass = password.toCharArray();
+		String password = IcbcConfig.password;//getValue(dbExtend, "password");
+		String bkInterfaceName = IcbcConfig.bkInterfaceNamePC;//getValue(dbExtend, "interfaceName");
+		String bkInterfaceVersion = IcbcConfig.bkInterfaceVersionPC;//getValue(dbExtend, "interfaceVersion");
+		String crtFilePath = IcbcConfig.crtFilePath;//getValue(dbExtend, "crtFile");
+		String keyFilePath = IcbcConfig.keyFilePath;//getValue(dbExtend, "keyFile");
+		String merID = IcbcConfig.merID;//getValue(dbExtend, "merID");
+		String merAcct = IcbcConfig.merAcct;//getValue(dbExtend, "merAcct");
+		String req_url = IcbcConfig.reqUrlPc;//getValue(dbExtend, "req_url");
+		String payNotifyUrl = IcbcConfig.notifyUrlPC;//getValue(dbExtend, "notify_url");
+		String timeOut = IcbcConfig.timeOut;//getValue(dbExtend, "timeOut");
 
-			IcbcOrderInfoPcVo orderInfo = new IcbcOrderInfoPcVo();
-			payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-			Integer totalFee = Integer.valueOf(fee);
-			
-			orderInfo.setMerID(merID);
-			orderInfo.setMerAcct(merAcct);
-			orderInfo.setAmount(totalFee);
-			orderInfo.setOrderid(orderId);
-			orderInfo.setGoodsName(subject);
-			orderInfo.setOrderDate(orderDate);
-			orderInfo.setMerURL(payNotifyUrl);
-			orderInfo.setMerReference(merReference);
-			orderInfo.setQid(Long.valueOf(qid));
-			String tranDataxml = orderInfo.toTranData();
-			// tranDataxml签名后的签名数据
-			byte[] sign = ReturnValue.sign(tranDataxml.getBytes(), tranDataxml.getBytes().length, bkey, keyPass);
-			if (sign == null) {
-				throw new Exception("签名失败");
-			} else {
-				logger.debug("ICBC 签名成功");
-			}
-
-			// base64编码
-			byte[] EncSign = ReturnValue.base64enc(sign);
-			String SignMsgBase64 = (new String(EncSign)).toString();// 签名信息BASE64编码
-			logger.debug("ICBC 签名信息BASE64编码 : {}", SignMsgBase64);
-
-			byte[] EncCert = ReturnValue.base64enc(bcert);
-			String CertBase64 = new String(EncCert).toString();// 证书公钥BASE64编码
-			logger.debug("ICBC 证书公钥BASE64编码 : {}", CertBase64);
-
-			byte[] base64 = ReturnValue.base64enc(tranDataxml.getBytes());
-			String tranDataBase64 = new String(base64, "GBK");
-
-			byte[] bxml = ReturnValue.base64dec(tranDataBase64.getBytes());
-			logger.debug("tranData base64dec: {}", new String(bxml));
-
-			Map<String, String> extend = new HashMap<>();
-			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", orderInfo.toTranData());
-			// 写入数据库epay的epay_oder_detail表中
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("保存detail表状态：{}", retInt);
-			
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("interfaceName", bkInterfaceName);
-			payMap.put("interfaceVersion", bkInterfaceVersion);
-			payMap.put("tranData", tranDataBase64);
-			payMap.put("merSignMsg", SignMsgBase64);
-			payMap.put("merCert", CertBase64);
-			payMap.put("clientType", 0);
-			payMap.put("req_url", req_url);
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
+		if ("".equals(password) || "".equals(bkInterfaceName)||
+				"".equals(bkInterfaceVersion) || "".equals(merID) || "".equals(merAcct) || "".equals(req_url) ||
+				"".equals(payNotifyUrl) || "".equals(timeOut) || TextUtils.isEmpty(crtFilePath) || TextUtils.isEmpty(keyFilePath)) {
+			logger.debug("[icbcPay] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
 		}
+		String crtFile = IcbcConfig.getCrtFilePath(operatingSystem, crtFilePath);
+		String keyFile = IcbcConfig.getKeyFilePath(operatingSystem, keyFilePath);
+
+		byte[] bcert = this.getFileByte(crtFile);
+		byte[] bkey = this.getFileByte(keyFile);
+		char[] keyPass = password.toCharArray();
+
+		IcbcOrderInfoPcVo orderInfo = new IcbcOrderInfoPcVo();
+		payNotifyUrl = Global.getConfig("epay.notify.url") + payNotifyUrl;
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Integer totalFee = Integer.valueOf(fee);
+
+		orderInfo.setMerID(merID);
+		orderInfo.setMerAcct(merAcct);
+		orderInfo.setAmount(totalFee);
+		orderInfo.setOrderid(orderId);
+		orderInfo.setGoodsName(subject);
+		orderInfo.setOrderDate(orderDate);
+		orderInfo.setMerURL(payNotifyUrl);
+		orderInfo.setMerReference(merReference);
+		orderInfo.setQid(Long.valueOf(qid));
+		String tranDataxml = orderInfo.toTranData();
+		// tranDataxml签名后的签名数据
+		byte[] sign = ReturnValue.sign(tranDataxml.getBytes(), tranDataxml.getBytes().length, bkey, keyPass);
+		if (sign == null) {
+			throw new Exception("签名失败");
+		} else {
+			logger.debug("ICBC 签名成功");
+		}
+
+		// base64编码
+		byte[] EncSign = ReturnValue.base64enc(sign);
+		String SignMsgBase64 = (new String(EncSign)).toString();// 签名信息BASE64编码
+		logger.debug("ICBC 签名信息BASE64编码 : {}", SignMsgBase64);
+
+		byte[] EncCert = ReturnValue.base64enc(bcert);
+		String CertBase64 = new String(EncCert).toString();// 证书公钥BASE64编码
+		logger.debug("ICBC 证书公钥BASE64编码 : {}", CertBase64);
+
+		byte[] base64 = ReturnValue.base64enc(tranDataxml.getBytes());
+		String tranDataBase64 = new String(base64, "GBK");
+
+		byte[] bxml = ReturnValue.base64dec(tranDataBase64.getBytes());
+		logger.debug("tranData base64dec: {}", new String(bxml));
+
+		Map<String, String> extend = new HashMap<>();
+		extend.put("interfaceName", bkInterfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", payNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", orderInfo.toTranData());
+		// 写入数据库epay的epay_oder_detail表中
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("保存detail表状态：{}", retInt);
+
+		logger.debug("[icbcPcPay]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("interfaceName", bkInterfaceName);
+		payMap.put("interfaceVersion", bkInterfaceVersion);
+		payMap.put("tranData", tranDataBase64);
+		payMap.put("merSignMsg", SignMsgBase64);
+		payMap.put("merCert", CertBase64);
+		payMap.put("clientType", 0);
+		payMap.put("req_url", req_url);
+		return payMap;
 	}
 
 	@SuppressWarnings("unchecked")

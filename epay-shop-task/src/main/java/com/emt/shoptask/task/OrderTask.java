@@ -1,5 +1,6 @@
 package com.emt.shoptask.task;
 
+import com.emt.shoptask.sv.inter.IPayPostSv;
 import com.emt.shoptask.sv.inter.IPaySv;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,9 @@ public class OrderTask {
     @Autowired
     private IPaySv iPaySv;
 
+    @Autowired
+    private IPayPostSv iPayPostSv;
+
     @Scheduled(cron = "0 */5 * * * ?") //
     public void alreadyPayPostTask() {
         logger.info("[alreadyPayPostTask]定时任务开始执行");
@@ -38,7 +42,7 @@ public class OrderTask {
      * 处理：已支付，未推送
      */
     public void alreadyPayPost(){
-        iPaySv.alreadyPayPost();
+        iPayPostSv.alreadyPayPost();
     }
 
     /**

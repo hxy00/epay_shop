@@ -9,19 +9,15 @@ package com.emt.shoppay.pojo;
  *
  */
 public class WeixinConfig {
-    public static String getAppSecret(String merId){
-        String secret = null;
-        switch (merId) {
-            case "1294158901":
-                secret = "2E090BCC8329A298315E4891A01D42CC";
-                break;
-            case "1294121001":
-                secret = "7a231e584a72a121d651df361fab418e";
-                break;
-            default:
-                secret = "2E090BCC8329A298315E4891A01D42CC";
-                break;
-        }
-        return secret;
-    }
+    public static String bkInterfaceVersion = "1.0.0.2";
+    public static String reqUrl = "https://api.mch.weixin.qq.com/pay/unifiedorder";
+    public static String appId = "wx7a2dfd9101d0bece";
+    public static String mchId = "1220734401";
+    public static String appSecret = "a27ac11c644038a10399f4aab5f07474";
+    public static String key = "a27ac11c644038a10399f4aabemao888";
+    public static String notyfiUrl = "/epay/weixin/notify_wap";
+    public static String timeOut = "30";
+
+    //query
+    public static String queryReqUrl = "https://api.mch.weixin.qq.com/pay/orderquery";
 }

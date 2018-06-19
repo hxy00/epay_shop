@@ -9,9 +9,7 @@ public interface IUnionpayManagerSv {
 
 //	public Map<String, Object> unionpayB2c(Map<String, String> upTranData,
 //			Map<String, Object> upExtend) throws Exception;
-//	
-	public Map<String, Object> unionpayQuickPass(Map<String, String> upTranData,
-                                                 Map<String, Object> upExtend) throws Exception;
+//
 	
 //	public Map<String, Object> unionpayControls(Map<String, String> upTranData,
 //			Map<String, Object> upExtend) throws Exception;

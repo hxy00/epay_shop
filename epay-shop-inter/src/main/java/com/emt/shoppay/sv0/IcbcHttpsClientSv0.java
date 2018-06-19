@@ -1,5 +1,6 @@
 package com.emt.shoppay.sv0;
 
+import com.emt.shoppay.pojo.IcbcConfig;
 import com.emt.shoppay.sv.impl.BaseSvImpl;
 import com.emt.shoppay.util.Config;
 import com.emt.shoppay.util.Global;
@@ -46,33 +47,15 @@ public class IcbcHttpsClientSv0 extends BaseSvImpl {
     private final static String sslTrustStorePassword = "123456";
 
 
-    private SSLContext getSSLContext(String jksFilePathKey) throws Exception{
+    private SSLContext getSSLContext(String jksFilePath) throws Exception{
         SSLContext sslContext = null;
 
-//		sslKeyStorePath = SystemUtil.getClassPath() + getValue(dbExtend, "sslKeyStorePath");
-//		String keyStorePath = null;
+        String sslKeyStorePathShop = IcbcConfig.getJksFilePath(operatingSystem, jksFilePath);
+        String sslTrustStoreShop = IcbcConfig.getJksFilePath(operatingSystem, jksFilePath);;
 
-        String sslKeyStorePathShop = null;
-        String sslTrustStoreShop = null;
-        if("Linux".equals(operatingSystem)){
-            sslKeyStorePathShop = Config.getConfig("pay/icbc/icbc_conf_linux.properties", jksFilePathKey);
-            sslTrustStoreShop = Config.getConfig("pay/icbc/icbc_conf_linux.properties", jksFilePathKey);
-        } else {
-            sslKeyStorePathShop = Config.getConfig("pay/icbc/icbc_conf_windows.properties", jksFilePathKey);
-            sslTrustStoreShop = Config.getConfig("pay/icbc/icbc_conf_windows.properties", jksFilePathKey);
-        }
-
-//		sslKeyStorePassword = getValue(dbExtend, "sslKeyStorePassword");
-//		sslKeyStoreType = getValue(dbExtend, "sslKeyStoreType");
-//		sslTrustStore = SystemUtil.getClassPath() + getValue(dbExtend, "sslTrustStore");
-//		sslTrustStorePassword = getValue(dbExtend, "sslTrustStorePassword");
-
-//		httpUrl = getValue(dbExtend, "req_url");//请求地址
-
-//		if (StringUtils.isEmpty(sslKeyStorePath) || StringUtils.isEmpty(sslKeyStorePassword)
-//				|| StringUtils.isEmpty(sslKeyStoreType) || StringUtils.isEmpty(sslTrustStore) || StringUtils.isEmpty(sslTrustStorePassword)) {
-//			throw new Exception("查询所需的证书参数为空！");
-//		}
+		if (StringUtils.isEmpty(sslKeyStorePathShop) || StringUtils.isEmpty(sslTrustStoreShop)) {
+			throw new Exception("查询所需的证书参数为空！");
+		}
 
         System.setProperty("javax.net.ssl.keyStore", sslKeyStorePathShop);
         System.setProperty("javax.net.ssl.keyStorePassword", sslKeyStorePassword);
@@ -110,9 +93,9 @@ public class IcbcHttpsClientSv0 extends BaseSvImpl {
      * @throws
      */
     @SuppressWarnings("deprecation")
-    public String getHttpsClientPost(String orderNum, String tranDate, String jksFlePathKey) {
+    public String getHttpsClientPost(String orderNum, String tranDate, String jksFlePath) {
         try {
-            SSLContext sslContext = getSSLContext(jksFlePathKey);
+            SSLContext sslContext = getSSLContext(jksFlePath);
             if(sslContext == null){
                 return "";
             }

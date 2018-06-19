@@ -31,7 +31,7 @@ public class IcbcOrderInfoWapVo extends BaseVO {
     public String remark2 = "";						// 备注字段2
     public String merURL = "http://game.cdev.gzmt.pub/epay/icbc/notify";// 通知商户URL
     // 必须合法的URL，交易结束，银行使用HTTP协议POST方式向此地址发送通知信息；目前只支持80端口
-    public String merVAR = "emaotai.cn.epay";		// 返回商户变量
+    public String merVAR = "pay.cmaotai.com";		// 返回商户变量
     public String notifyType = "HS";				// 通知类型 ： HS 通知（以HTTP协议POST方式） ； AG 不通知
     public String resultType = "0";					// 结果发送类型 取值“0”：无论支付成功或者失败，银行都向商户发送交易通知信息；
     // 取值“1”，银行只向商户发送交易成功的通知信息。

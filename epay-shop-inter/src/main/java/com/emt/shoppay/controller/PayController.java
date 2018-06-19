@@ -2,7 +2,7 @@ package com.emt.shoppay.controller;
 
 import com.emt.shoppay.pojo.CalendarUtil;
 import com.emt.shoppay.pojo.ReturnObject;
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
+import com.emt.shoppay.util.ValidataUtil;
 import com.emt.shoppay.sv.inter.*;
 import com.emt.shoppay.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,8 +19,6 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.*;
 
 /**
@@ -35,9 +33,6 @@ import java.util.*;
 @RequestMapping("/epay/pay")
 public class PayController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
-
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
 
 	@Resource
 	private IEpayOrderDetailSv iEpayOrderDetailSv;
@@ -94,7 +89,7 @@ public class PayController {
 				ObjectMapper mapper = new ObjectMapper();
 				Map<String, String> map = mapper.readValue(deTranData, Map.class);
 				// 验证数据正确性
-				if (!validataSv.ValidataData(busiid, map, signData)) {
+				if (!ValidataUtil.ValidataData(busiid, map, signData)) {
 					logger.debug("[orderPay2] 错误编码：0011，错误原因：非法的交易数据！Sign验证未通过");
 					model.put("errormsg", "错误编码：0011，错误原因：非法的交易数据！Sign验证未通过");
 					return "/epay/error";
@@ -131,15 +126,15 @@ public class PayController {
 				upExtend.put("sysId", sysId);
 				String result = null;
 				switch (interfaceName.toLowerCase()) {
-//				case "icbc_wap":
-//					result = icbcWap(map, upExtend, model);
-//					break;
+				case "icbc_wap":
+					result = icbcWap(map, upExtend, model);
+					break;
 				case "icbc_pc":
 					result = icbcPc(map, upExtend, model);
 					break;
-//				case "abc_pay_wap":
-//					result = abcWap(map, upExtend, model);
-//					break;
+				case "abc_pay_wap":
+					result = abcWap(map, upExtend, model);
+					break;
 				case "abc_pay_pc":
 					result = abcWap(map, upExtend, model);
 					break;
@@ -157,6 +152,9 @@ public class PayController {
 					break;
 				case "boc_b2c_pc"://官方中行
 					result = bocPayPcB2C(map, upExtend, model);
+					break;
+				case "boc_b2c_wap":
+					result = bocPayWapB2C(map, upExtend, model);
 					break;
 				default:
 					model.put("errormsg", "没有相应支付方式，请检查。");
@@ -222,167 +220,20 @@ public class PayController {
 			map.put("resultUrl", resultUrl);
 			
 			String json = "amount=" + amount + "&orderId=" + orderId + "&status=" + tranStat;
-			String sign = validataSv.getValidataString("10001", json);
+			String sign = ValidataUtil.getValidataString("10001", json);
 			map.put("sign", sign);
 			
 			return new ReturnObject(ReturnObject.SuccessEnum.success, "1", map, 1);
 		}
 	}
 
-	/**
-	 * 应用系统主动查询
-	* @Title: orderQuery 
-	* @Description: TODO(这里用一句话描述这个方法的作用) 
-	* @param @param request
-	* @param @param response
-	* @param @param interfaceName
-	* @param @param interfaceVersion
-	* @param @param qid
-	* @param @param tranData
-	* @param @param signData
-	* @param @param clientType
-	* @param @param busiid
-	* @param @param model  参数说明 
-	* @return void    返回类型 
-	* @throws
-	 */
-	@SuppressWarnings("unchecked")
-	@RequestMapping(value = "/orderQuery")
-	public void orderQuery(
-			HttpServletRequest request,
-			HttpServletResponse response,
-			@RequestParam(value = "interfaceName", required = true) String interfaceName,// 接口名称
-			@RequestParam(value = "interfaceVersion", required = true) String interfaceVersion,// 接口版本号
-			@RequestParam(value = "qid", required = true) Long qid,// 返回结果序号
-			@RequestParam(value = "tranData", required = true) String tranData,// 接口参数数据
-			@RequestParam(value = "signData", required = true) String signData,// 签名
-			@RequestParam(value = "clientType", required = true) String clientType,// 客户端类型
-			@RequestParam(value = "busiid", required = true) String busiid,// 业务ID
-			ModelMap model) {
-		ReturnObject returnObject = new ReturnObject();
-		PrintWriter out;
-		try {
-			out = response.getWriter();
-		} catch (IOException e1) {
-			e1.printStackTrace();
-			return;
-		}
-
-		// 目前仅有1.0.0.2版本
-		if ("1.0.0.2".equals(interfaceVersion)) {
-			try {
-				Map<String, String> map = null;
-
-				tranData = Base64Util.decodeBase64(tranData, "UTF-8");
-
-				ObjectMapper mapper = new ObjectMapper();
-				map = mapper.readValue(tranData, Map.class);
-
-				// 验证数据正确性
-				if (!validataSv.ValidataData(busiid, map, signData)) {
-					returnObject.setRetcode(11);
-					returnObject.setRetmsg("错误原因：非法的交易数据！");
-					out.write(returnObject.toJson());
-					return;
-				}
-
-				String orderId = map.get("orderId");
-
-				Map<String, Object> rd = new HashMap<String, Object>();
-				rd.put("orderid", orderId);
-//				rd.put(BaseSqlBuilder.getOrderByField(), "tranStat desc");
-				List<Map<String, Object>> orderList = iEpayOrderDetailSv.Select(rd);
-
-				if (orderList.size() == 0) {
-					returnObject.setRetcode(12);
-					returnObject.setRetmsg("无此订单的支付记录！");
-					out.write(returnObject.toJson());
-					return;
-				}
-
-				String tranStat = "";
-				String payCompany = "";
-
-				for (int i = 0; i < orderList.size(); i++) {
-					Map<String, Object> order = orderList.get(i);
-					tranStat = order.get("tranStat").toString();
-					payCompany = order.get("payCompany").toString();
-					if ("1".equals(tranStat)) {
-						// 已经支付成功了
-						returnObject.setRetcode(ReturnObject.SuccessEnum.success.getSuccessEnum());
-						returnObject.setRetmsg("成功");
-
-						Long amount = (Long) order.get("amount");
-
-
-						Map<String, String> pMap = new HashMap<String, String>();
-					    pMap.put("orderId", orderId);
-					    pMap.put("payCompany", payCompany);
-					    pMap.put("amount", String.valueOf(amount));
-					    pMap.put("tranStat", "1");
-					    pMap.put("discountAmount", "0.00");
-					    pMap.put("interfaceName", interfaceName);
-						
-						String tranMapJson = ToolsUtil.mapToJson(pMap);
-						tranData = Base64Util.encodeBase64(tranMapJson);
-						String sign = validataSv.getValidataString("10001", tranData);
-						
-						Map<String, Object> paramMap = new HashMap<>();
-						paramMap.put("tranData", tranData);
-						paramMap.put("sign", sign);
-						
-						returnObject.setData(paramMap);
-						returnObject.setCount(1);
-
-						out.write(returnObject.toJson());
-						return;
-					}
-				}
-				// 未支付过
-				returnObject.setRetcode(11003);
-				returnObject.setRetmsg("未支付");
-
-				Map<String, String> pMap = new HashMap<String, String>();
-			    pMap.put("orderId", orderId);
-			    pMap.put("payCompany", payCompany);
-			    pMap.put("amount", "0");
-			    pMap.put("tranStat", "0");
-			    pMap.put("discountAmount", "0.00");
-			    pMap.put("interfaceName", interfaceName);
-				
-				String tranMapJson = ToolsUtil.mapToJson(pMap);
-				tranData = Base64Util.encodeBase64(tranMapJson);
-				String sign = validataSv.getValidataString("10001", tranData);
-				
-				Map<String, Object> paramMap = new HashMap<>();
-				paramMap.put("tranData", tranData);
-				paramMap.put("sign", sign);
-				
-				returnObject.setData(paramMap);
-				returnObject.setCount(1);
-				
-				out.write(returnObject.toJson());
-				return;
-
-			} catch (Exception e) {
-				returnObject.setRetcode(11002);
-				returnObject.setRetmsg(e.getMessage());
-				out.write(returnObject.toJson());
-				return;
-			}
-		}
-		returnObject.setRetcode(11001);
-		returnObject.setRetmsg("错误原因：版本号错误！");
-		out.write(returnObject.toJson());
-	}
-	
-	//**********************************
+	//*********************************************调用sv获取组装的支付参数*************************************************************//
 	private String icbcWap(Map<String, String> tranMap, Map<String, Object> upExtend, ModelMap model){
 		try {
 			Map<String, Object> mReturn = iIcbcManagerSv.icbcPayWapB2C(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[orderPay2] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			model.put("interfaceName", mReturn.get("interfaceName"));
@@ -404,8 +255,8 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iIcbcManagerSv.icbcPayPcB2C(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[icbcPc] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			model.put("interfaceName", mReturn.get("interfaceName"));
@@ -415,6 +266,7 @@ public class PayController {
 			model.put("merCert", mReturn.get("merCert"));
 			model.put("clientType", mReturn.get("clientType"));
 			model.put("b2c_url", mReturn.get("req_url"));
+			logger.debug("[icbcPc] 请求参数：model={}", model);
 			return "/epay/icbc_pc";
 		} catch (Exception e) {
 			model.put("errormsg", "支付失败！" + e.getMessage());
@@ -427,11 +279,12 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iAbcManagerSv.abcPay(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[abcWap] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			model.put("PaymentURL", mReturn.get("PaymentURL"));
+			logger.debug("[abcWap] 请求参数：model={}", model);
 			return "/epay/abc_pay";
 		} catch (Exception e) {
 			model.put("errormsg", "支付失败！" + e.getMessage());
@@ -444,8 +297,8 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iAlipayManagerSv.alipayWap(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[alipayWap] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			model.put("submitUrl", mReturn.get("submitUrl"));
@@ -464,7 +317,7 @@ public class PayController {
 			model.put("notify_url", mReturn.get("notify_url"));
 			model.put("rn_check", "T");
 			model.put("show_url", mReturn.get("show_url"));
-			logger.debug("[alipayWap] model：{}", model);
+			logger.debug("[alipayWap] 请求参数：model={}", model);
 
 			return "/epay/alipay_wap";
 		} catch (Exception e) {
@@ -478,8 +331,8 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iAlipayManagerSv.alipayPc(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[alipayPc] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			model.put("submitUrl", mReturn.get("submitUrl"));
@@ -500,7 +353,7 @@ public class PayController {
 //			model.put("seller_id", mReturn.get("seller_id"));
 //			model.put("rn_check", "T");
 //			model.put("show_url", mReturn.get("show_url"));
-			logger.debug("[alipayPc] model：{}", model);
+			logger.debug("[alipayPc] 请求参数：model={}", model);
 
 			return "/epay/alipay_pc";
 		} catch (Exception e) {
@@ -514,8 +367,8 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iCcbManagerSv.ccbPay(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[ccbPay] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 			
@@ -535,6 +388,8 @@ public class PayController {
 			model.put("REMARK1", mReturn.get("REMARK1"));
 			model.put("REMARK2", mReturn.get("REMARK2"));
 			model.put("REFERER", mReturn.get("REFERER"));
+
+			logger.debug("[ccbPay] 请求参数：model={}", model);
 			return "/epay/ccb_wap";
 		} catch (Exception e) {
 			model.put("errormsg", "支付失败！" + e.getMessage());
@@ -542,20 +397,21 @@ public class PayController {
 			return "/epay/error";
 		}		
 	}
-	
+
 	private String unionpay(Map<String, String> tranMap, Map<String, Object> upExtend, ModelMap model){
 		try {
 			Map<String, Object> mReturn = null;
 			String interfaceName = upExtend.get("interfaceName").toString();
 			if(interfaceName.toLowerCase().equals("unionpay_b2c_applepay") || interfaceName.toLowerCase().equals("unionpay_b2c_controls_pay")){
-				mReturn = iUnionpayManagerSv.unionpayQuickPass(tranMap, upExtend);//云闪付
-				if (null == mReturn) {
-					model.put("errormsg", "获取支付关键参数失败，请检查。");
-					logger.debug("[orderPay2] 获取支付关键参数失败，请检查。");
-					return "/epay/error";
-				}
-				ReturnObject returnObject = (ReturnObject) mReturn.get("returnObject");
-				return returnObject.toJson();
+//				mReturn = iUnionpayManagerSv.unionpayQuickPass(tranMap, upExtend);//云闪付
+//				if (null == mReturn) {
+//					model.put("errormsg", "获取支付关键参数失败，请检查。");
+//					logger.debug("[unionpayEmt] 获取支付关键参数失败，请检查。");
+//					return "/epay/error";
+//				}
+//				ReturnObject returnObject = (ReturnObject) mReturn.get("returnObject");
+//				return returnObject.toJson();
+				throw new Exception("尚不支持此种支付方式");
 			} else {
 				mReturn = iUnionpayManagerSv.unionpay(tranMap, upExtend);
 				if (null == mReturn) {
@@ -584,6 +440,8 @@ public class PayController {
 			model.put("signature", mReturn.get("signature"));
 			model.put("submitUrl", mReturn.get("submitUrl"));
 			model.put("orderDesc", mReturn.get("orderDesc"));
+
+			logger.debug("[unionpayEmt] 请求参数：model={}", model);
 			return "/epay/unop";
 		} catch (Exception e) {
 			model.put("errormsg", "支付失败！" + e.getMessage());
@@ -596,8 +454,8 @@ public class PayController {
 		try {
 			Map<String, Object> mReturn = iBocManagerSv.bocPayPcB2C(tranMap, upExtend);
 			if (null == mReturn) {
-				model.put("errormsg", "获取支付关键失败，请检查。");
-				logger.debug("[orderPay2] 获取支付关键失败，请检查。");
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[bocPayPcB2C] 获取支付关键参数失败，请检查。");
 				return "/epay/error";
 			}
 
@@ -614,12 +472,46 @@ public class PayController {
 			model.put("mchtCustIP", MapUtils.getString(mReturn, "mchtCustIP"));
 			model.put("signData", MapUtils.getString(mReturn, "signData"));
 			model.put("action", MapUtils.getString(mReturn, "action"));
-			logger.debug("[boc_pc_b2c] model：{}", model);
+
+			logger.debug("[bocPayPcB2C] 请求参数：model={}", model);
 
 			return "/epay/boc_pc_b2c";
 		} catch (Exception e) {
 			model.put("errormsg", "支付失败！" + e.getMessage());
-			logger.debug("[orderPay2] 支付失败！" + e.getMessage());
+			logger.debug("[bocPayPcB2C] 支付失败！" + e.getMessage());
+			return "/epay/error";
+		}
+	}
+
+	private String bocPayWapB2C(Map<String, String> tranMap, Map<String, Object> upExtend, ModelMap model){
+		try {
+			Map<String, Object> mReturn = iBocManagerSv.bocPayWapB2C(tranMap, upExtend);
+			if (null == mReturn) {
+				model.put("errormsg", "获取支付关键参数失败，请检查。");
+				logger.debug("[bocPayWapB2C] 获取支付关键参数失败，请检查。");
+				return "/epay/error";
+			}
+
+			// 将参数放置到request对象
+			model.put("merchantNo", MapUtils.getString(mReturn, "merchantNo"));
+			model.put("payType", MapUtils.getString(mReturn, "payType"));
+			model.put("orderNo", MapUtils.getString(mReturn, "orderNo"));
+			model.put("curCode", MapUtils.getString(mReturn, "curCode"));
+			model.put("orderAmount", MapUtils.getString(mReturn, "orderAmount"));
+			model.put("orderTime", MapUtils.getString(mReturn, "orderTime"));
+			model.put("orderNote", MapUtils.getString(mReturn, "orderNote"));
+			model.put("orderUrl", MapUtils.getString(mReturn, "orderUrl"));
+			model.put("orderTimeoutDate", MapUtils.getString(mReturn, "orderTimeoutDate"));
+			model.put("mchtCustIP", MapUtils.getString(mReturn, "mchtCustIP"));
+			model.put("signData", MapUtils.getString(mReturn, "signData"));
+			model.put("action", MapUtils.getString(mReturn, "action"));
+
+			logger.debug("[bocPayWapB2C] 请求参数：model={}", model);
+
+			return "/epay/boc_wap_b2c";
+		} catch (Exception e) {
+			model.put("errormsg", "支付失败！" + e.getMessage());
+			logger.debug("[bocPayWapB2C] 支付失败！" + e.getMessage());
 			return "/epay/error";
 		}
 	}

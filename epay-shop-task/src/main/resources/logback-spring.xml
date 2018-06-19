@@ -3,8 +3,8 @@
 
     <contextName>logback-epay-shop-inter</contextName>
 
-    <property name="logback.logdir" value="D:\\log4j\\epay_shop_task\\logs"/>
-    <!--<property name="logback.logdir" value="/webs/log4j/epay_shop_inter/logs"/>-->
+    <!--<property name="logback.logdir" value="D:\\log4j\\epay_shop_task\\logs"/>-->
+    <property name="logback.logdir" value="/webs/log4j/epay_shop_task/logs"/>
     <property name="logback.appname" value="task"/>
 
     <appender name="fileInfoLog" class="ch.qos.logback.core.rolling.RollingFileAppender">

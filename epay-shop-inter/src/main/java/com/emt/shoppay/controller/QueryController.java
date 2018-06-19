@@ -56,6 +56,7 @@ public class QueryController {
     }
 
     @RequestMapping("/queryFromICBC")
+    @ResponseBody
     public String queryFromICBC(String orderId, String orderDate){
         Map<String, String> map = iPayQueryApiSv.queryFromIcbc("400001", orderId, orderDate);
         logger.debug(map.toString());
@@ -72,8 +73,8 @@ public class QueryController {
 
     @RequestMapping("/queryFromWeixinpay")
     @ResponseBody
-    public String queryFromWeixinpay(String orderId, String orderDate){
-        Map<String, String> map = iPayQueryApiSv.queryFromWeixinpay("", "");
+    public String queryFromWeixinpay(String orderId){
+        Map<String, String> map = iPayQueryApiSv.queryFromWeixinpay(orderId, "400001");
         logger.debug(map.toString());
         return map.toString();
     }

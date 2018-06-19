@@ -79,19 +79,22 @@
               <if test="comment != null and comment != ''">
                   comment = #{comment},
               </if>
+              <if test="createTime != null and createTime != ''">
+                  Create_date = now(),
+              </if>
               <if test="updateTime != null and updateTime != ''">
-                  Update_date = getdate(),
+                  Update_date = now(),
               </if>
 
 
               <if test="IsPost != null and IsPost != ''">
-                  IsPost = #{IsPost}
+                  IsPost = #{IsPost},
               </if>
               <if test="Times != null and Times != ''">
-                  Times = #{Times}
+                  Times = #{Times},
               </if>
               <if test="IsSend != null and IsSend != ''">
-                  IsSend = #{IsSend}
+                  IsSend = #{IsSend},
               </if>
           </set>
         WHERE orderid = #{orderid} AND payCompany = #{payCompany}
@@ -99,15 +102,13 @@
 
     <insert id="Insert" parameterType="java.util.HashMap">
         INSERT INTO epay_oder_detail
-          (amount,clientType,Emt_sys_id,interfaceName,interfaceVersion,merURL,merVAR,orderDate,orderid,payCompany,ResultUrl,Qid,shopCode,TranData,tranStat,comment)
+          (amount,clientType,Emt_sys_id,interfaceName,interfaceVersion,merURL,merVAR,orderDate,orderid,payCompany,ResultUrl,Qid,shopCode,TranData,tranStat,comment,Create_date,Update_date)
         VALUES
-          (#{amount},#{clientType},#{emt_sys_id},#{interfaceName},#{interfaceVersion},#{merURL},#{merVAR},#{orderDate},#{orderid},#{payCompany},#{resultUrl},#{qid},#{shopCode},#{tranData},#{tranStat},#{comment})
+          (#{amount},#{clientType},#{emt_sys_id},#{interfaceName},#{interfaceVersion},#{merURL},#{merVAR},#{orderDate},#{orderid},#{payCompany},#{resultUrl},#{qid},#{shopCode},#{tranData},#{tranStat},#{comment},now(),now())
     </insert>
 
     <select id="unPayList" resultType="map" parameterType="java.util.HashMap" useCache="true" fetchSize="50">
-        select a.orderid from epay_oder_detail a where Emt_sys_id=#{sysId} and DATEDIFF(hh, a.Create_date, GETDATE()) &lt;=  #{hour}  and
-        not exists (select 1 from epay_oder_detail b where  DATEDIFF(hh, b.Create_date, GETDATE()) &lt;=  #{hour}
-        and  tranStat = 1 and a.orderid = b.orderid ) group by  a.orderid
+        select orderid from epay_oder_detail where Emt_sys_id=#{sysId} and TIMESTAMPDIFF(HOUR, Create_date, now()) &lt;=  #{hour} and tranStat != 1
     </select>
 
 </mapper>

@@ -2,9 +2,7 @@ package com.emt.shoppay.controller;
 
 import com.emt.shoppay.pojo.BocPKCSTool;
 import com.emt.shoppay.pojo.BocPayConfig;
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
 import com.emt.shoppay.sv.inter.IBocManagerSv;
-import com.emt.shoppay.sv.inter.IValidataSv;
 import com.emt.shoppay.util.LogAnnotation;
 import org.apache.http.util.TextUtils;
 import org.slf4j.Logger;
@@ -27,9 +25,6 @@ import java.util.Map;
 @RequestMapping("/epay/bocpay")
 public class BocPayController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
-
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
 
 	@Resource
 	private IBocManagerSv iBocManagerSv;

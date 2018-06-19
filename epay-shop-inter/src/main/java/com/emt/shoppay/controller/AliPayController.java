@@ -1,8 +1,6 @@
 package com.emt.shoppay.controller;
 
-import com.emt.shoppay.sv.impl.ValidataSvImpl;
 import com.emt.shoppay.sv.inter.IAlipayManagerSv;
-import com.emt.shoppay.sv.inter.IValidataSv;
 import com.emt.shoppay.util.LogAnnotation;
 import org.apache.http.util.TextUtils;
 import org.slf4j.Logger;
@@ -24,9 +22,6 @@ import java.util.Map;
 public class AliPayController {
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
-	@Resource(name = "validataSvImpl", type = ValidataSvImpl.class)
-	private IValidataSv validataSv;
-	
 	@Resource
 	private IAlipayManagerSv iAlipayManagerSv;
 

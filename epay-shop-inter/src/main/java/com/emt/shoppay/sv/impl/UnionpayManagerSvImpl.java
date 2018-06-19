@@ -4,6 +4,7 @@ package com.emt.shoppay.sv.impl;
 import com.emt.shoppay.acp.sdk.*;
 import com.emt.shoppay.dao.inter.IEpayParaConfigDao;
 import com.emt.shoppay.pojo.ReturnObject;
+import com.emt.shoppay.pojo.UnionpayConfig;
 import com.emt.shoppay.sv.inter.IPayQueryApiSv;
 import com.emt.shoppay.sv.inter.IUnionpayManagerSv;
 import com.emt.shoppay.util.*;
@@ -40,29 +41,16 @@ public class UnionpayManagerSvImpl extends BaseSvImpl implements
 
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
-	@Resource
-	private IEpayParaConfigDao iEpayParaConfigDao;
-
 //	@Resource
 //	private IActivitySv iActivitySv;
 
-	/*
+	/**
 	 * 银联unionpay_b2b,unionpay_b2c,unionpay_b2c_wap,unionpay_emt支付通用方法 Title:
-	 * unionpayDescription:
-	 * 
 	 * @param upTranData
-	 * 
 	 * @param upExtend
-	 * 
 	 * @return
-	 * 
 	 * @throws Exception
-	 * 
-	 * @see
-	 * com.emt.modules.epay.sv.inter.IUnionpayManagerSv#unionpay(java.util.Map,
-	 * java.util.Map)
 	 */
-	@SuppressWarnings("unchecked")
 	@Override
 	public Map<String, Object> unionpay(Map<String, String> upTranData, Map<String, Object> upExtend) throws Exception {
 		String orderId = getValue(upTranData, "orderId");
@@ -72,315 +60,104 @@ public class UnionpayManagerSvImpl extends BaseSvImpl implements
 		String ip = getValue(upTranData, "ip");
 		String tradeType = getValue(upTranData, "tradeType");
 		String appType = getValue(upTranData, "appType");
+		String interfaceName = getValue(upExtend, "interfaceName", null);
 
 		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl) || "".equals(subject)) {
-			logger.debug("[unionpay] 缺少必要的参数！");
+			logger.debug("[unionpay_emt] 缺少必要的参数！");
 			throw new Exception("缺少必要的参数！");
 		}
 
-		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);
+		String bkInterfaceVersion = UnionpayConfig.bkInterfaceVersion;//getValue(dbExtend, "interfaceVersion");
+		String merId = UnionpayConfig.merId;//getValue(dbExtend, "merId");
+		String encoding = UnionpayConfig.encoding;//getValue(dbExtend, "encoding");
+		String bizType = UnionpayConfig.bizType;//getValue(dbExtend, "bizType");
+		String payNotifyUrl = UnionpayConfig.notifyUrl;//getValue(dbExtend, "notify_url");
+		String backURL = UnionpayConfig.backUrl;//getValue(dbExtend, "backUrl");
+		String timeOut = UnionpayConfig.timeOut;//getValue(dbExtend, "timeOut");
 
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String merId = getValue(dbExtend, "merId");
-			String encoding = getValue(dbExtend, "encoding");
-			String bizType = getValue(dbExtend, "bizType");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");
-			String backURL = getValue(dbExtend, "backUrl");
-			String timeOut = getValue(dbExtend, "timeOut");
-			timeOut = !TextUtils.isEmpty(timeOut) ? timeOut : "30";
+		String fileName = "acp_sdk_emt_windows.properties";
+		String operatingSystem = Global.getConfig("epay.OS.switch");
+		if("Linux".equals(operatingSystem)){
+			fileName = "acp_sdk_emt_linux.properties";
+		}
 
-			String fileName = "acp_sdk_emt_windows.properties";
-			String operatingSystem = Global.getConfig("epay.OS.switch");
-			if("Linux".equals(operatingSystem)){
-				fileName = "acp_sdk_emt_linux.properties";
-			}
+		if ("".equals(merId) || "".equals(encoding) || "".equals(payNotifyUrl) ||
+				"".equals(bkInterfaceVersion) || "".equals(backURL) || "".equals(timeOut) || "".equals(fileName)) {
+			logger.debug("[unionpay_emt] 获取支付参数为空");
+			throw new Exception("获取支付参数为空");
+		}
+		//获取订单失效时间
+		Date date = new Date();
+		String orderTimeOutDate = getOrderTimeoutDate(date, Integer.valueOf(timeOut));
 
-			if ("".equals(merId) || "".equals(encoding) || "".equals(fileName)
-					|| "".equals(payNotifyUrl) || "".equals(bkInterfaceVersion)
-					|| "".equals(backURL) || "".equals(timeOut)) {
-				logger.debug("[" + bkInterfaceName + "] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-			//获取订单失效时间
-			Date date = new Date();
-			String orderTimeOutDate = getOrderTimeoutDate(date, Integer.valueOf(timeOut));
-			
-			Integer totalFee = Integer.valueOf(fee);
-			// totalFee = totalFee / 100f;
-			String globalUrl = Global.getConfig("epay.notify.url");
-			payNotifyUrl = globalUrl + payNotifyUrl;
-			String backUrl = globalUrl + backURL;
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
+		Integer totalFee = Integer.valueOf(fee);
+		// totalFee = totalFee / 100f;
+		String globalUrl = Global.getConfig("epay.notify.url");
+		payNotifyUrl = globalUrl + payNotifyUrl;
+		String backUrl = globalUrl + backURL;
+		String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
 
-			Map<String, String> data = new HashMap<String, String>();
-			data.put("version", bkInterfaceVersion);
-			data.put("encoding", encoding);
-			data.put("signMethod", "01");
-			data.put("txnType", "01");
-			data.put("txnSubType", "01");
-			data.put("bizType", bizType);// 000201：B2C 网关支付 000301：认证支付 2.0
-											// 000302：评级支付 000401：代付 000501：代收
-											// 000601：账单支付 000801：跨行收单
-											// 000901：绑定支付 001001：订购 000202：B2B
-			data.put("channelType", "07");
-			data.put("merId", merId);
-			data.put("accessType", "0");
-			data.put("orderId", orderId);
-			data.put("txnTime", orderDate);
-			data.put("currencyCode", "156");
-			data.put("txnAmt", String.valueOf(totalFee));
-			data.put("backUrl", backUrl);
-			data.put("frontUrl", payNotifyUrl);
-			data.put("accType", "01");
+		Map<String, String> data = new HashMap<String, String>();
+		data.put("version", bkInterfaceVersion);
+		data.put("encoding", encoding);
+		data.put("signMethod", "01");
+		data.put("txnType", "01");
+		data.put("txnSubType", "01");
+		data.put("bizType", bizType);// 000201：B2C 网关支付 000301：认证支付 2.0
+										// 000302：评级支付 000401：代付 000501：代收
+										// 000601：账单支付 000801：跨行收单
+										// 000901：绑定支付 001001：订购 000202：B2B
+		data.put("channelType", "07");
+		data.put("merId", merId);
+		data.put("accessType", "0");
+		data.put("orderId", orderId);
+		data.put("txnTime", orderDate);
+		data.put("currencyCode", "156");
+		data.put("txnAmt", String.valueOf(totalFee));
+		data.put("backUrl", backUrl);
+		data.put("frontUrl", payNotifyUrl);
+		data.put("accType", "01");
 //			data.put("payTimeout", orderTimeOutDate);
 //			data.put("reqReserved", Base64Util.encodeBase64("unionpay_b2c", "UTF-8"));
 
-			SDKConfig.getConfig("pay/unopPay/"+ fileName);
-			data = SDKUtil.signData(data, encoding);
+		SDKConfig.getConfig("pay/unopPay/" + fileName);
+		data = SDKUtil.signData(data, encoding);
 
-			Map<String, String> extend = new HashMap<>();
-			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(data));
-			extend.put("shopCode", merId);
+		Map<String, String> extend = new HashMap<>();
+		extend.put("interfaceName", interfaceName);
+		extend.put("interfaceVersion", bkInterfaceVersion);
+		extend.put("merUrl", payNotifyUrl);
+		extend.put("merVAR", "pay.cmaotai.com");
+		extend.put("orderDate", orderDate);
+		extend.put("buildData", ToolsUtil.mapToJson(data));
+		extend.put("shopCode", merId);
 
-			// 写入数据库epay的epay_oder_detail表中
-			Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-			logger.debug("[" + bkInterfaceName + "] 保存detail表状态：", retInt);
+		// 写入数据库epay的epay_oder_detail表中
+		Integer retInt = insertPayOrderDetail(upTranData, upExtend, extend);
+		logger.debug("[unionpay_emt] 保存detail表状态：", retInt);
 
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("version", data.get("version"));
-			payMap.put("encoding", data.get("encoding"));
-			payMap.put("signMethod", data.get("signMethod"));
-			payMap.put("txnType", data.get("txnType"));
-			payMap.put("txnSubType", data.get("txnSubType"));
-			payMap.put("bizType", data.get("bizType"));
-			payMap.put("channelType", data.get("channelType"));
-			payMap.put("merId", data.get("merId"));
-			payMap.put("accessType", data.get("accessType"));
-			payMap.put("orderId", data.get("orderId"));
-			payMap.put("txnTime", data.get("txnTime"));
-			payMap.put("currencyCode", data.get("currencyCode"));
-			payMap.put("txnAmt", data.get("txnAmt"));
-			payMap.put("frontUrl", data.get("frontUrl"));
-			payMap.put("backUrl", data.get("backUrl"));
-			payMap.put("accType", data.get("accType"));
-			payMap.put("certId", data.get("certId"));
-			payMap.put("signature", data.get("signature"));
-			payMap.put("payTimeout", orderTimeOutDate);
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
-		}
-	}
-
-	/*
-	 * 银联闪付 Title: unionpayQuickPassDescription:
-	 * 
-	 * @param upTranData
-	 * 
-	 * @param upExtend
-	 * 
-	 * @return
-	 * 
-	 * @throws Exception
-	 * 
-	 * @see
-	 * com.emt.modules.epay.sv.inter.IUnionpayManagerSv#unionpayQuickPass(java
-	 * .util.Map, java.util.Map)
-	 */
-	@SuppressWarnings("unchecked")
-	@Override
-	public Map<String, Object> unionpayQuickPass(Map<String, String> upTranData, Map<String, Object> upExtend) throws Exception {
-		String orderId = getValue(upTranData, "orderId");
-		String fee = getValue(upTranData, "totalFee");
-		String resultUrl = getValue(upTranData, "notifyUrl");
-		String subject = getValue(upTranData, "subject");
-		String activity = getValue(upTranData, "activity");
-		String ip = getValue(upTranData, "ip");
-		String tradeType = getValue(upTranData, "tradeType");
-		String appType = getValue(upTranData, "appType");
-
-		if ("".equals(orderId) || "".equals(fee) || "".equals(resultUrl)
-				|| "".equals(subject)) {
-			logger.debug("[unionpayQuickPass] 缺少必要的参数！");
-			throw new Exception("缺少必要的参数！");
-		}
-
-		String interfaceName = getValue(upExtend, "interfaceName", null);
-		String interfaceVersion = getValue(upExtend, "interfaceVersion", null);
-		String qid = getValue(upExtend, "qid", null);
-		String clientType = getValue(upExtend, "clientType", null);
-		String merReference = getValue(upExtend, "merReference", null);
-		String busiid = getValue(upExtend, "busiid", null);
-		String sysId = getValue(upExtend, "sysId", null);
-
-		Map<String, Object> rd = new HashMap<String, Object>();
-		rd.put("payCompany", interfaceName);
-		rd.put("sysId", sysId);
-		rd.put("type", "pay");
-		List<Map<String, Object>> lstData = iEpayParaConfigDao.Select(rd);
-		if (null != lstData && lstData.size() > 0) {
-			Map<String, Object> rMap = lstData.get(0);
-			String paraExtend = rMap.get("paraExtend").toString();
-			ObjectMapper mapper = new ObjectMapper();
-			Map<String, String> dbExtend = mapper.readValue(paraExtend, Map.class);
-			String bkInterfaceName = getValue(dbExtend, "interfaceName");
-			String bkInterfaceVersion = getValue(dbExtend, "interfaceVersion");
-			String merId = getValue(dbExtend, "merId");
-			String encoding = getValue(dbExtend, "encoding");
-			String bizType = getValue(dbExtend, "bizType");
-			String payNotifyUrl = getValue(dbExtend, "notify_url");
-			String backURL = getValue(dbExtend, "backUrl");
-			String timeOut = getValue(dbExtend, "timeOut");
-			timeOut = !TextUtils.isEmpty(timeOut) ? timeOut : "30";
-
-			String fileName = "acp_sdk_emt_windows.properties";
-			String operatingSystem = Global.getConfig("epay.OS.switch");
-			if("Linux".equals(operatingSystem)){
-				fileName = "acp_sdk_emt_linux.properties";
-			}
-
-			if ("".equals(merId) || "".equals(encoding) || "".equals(fileName)
-					|| "".equals(payNotifyUrl) || "".equals(bkInterfaceVersion)
-					|| "".equals(backURL) || "".equals(timeOut)) {
-				logger.debug("[" + bkInterfaceName + "] 获取支付参数为空");
-				throw new Exception("获取支付参数为空");
-			}
-
-			//获取订单失效时间
-			Date date = new Date();
-			String orderTimeOutDate = getOrderTimeoutDate(date, Integer.valueOf(timeOut));
-
-			Integer totalFee = Integer.valueOf(fee);
-			// totalFee = totalFee / 100f;
-			String globalUrl = Global.getConfig("epay.notify.url");
-			payNotifyUrl = globalUrl + payNotifyUrl;
-			String backUrl = globalUrl + backURL;
-			String orderDate = DateUtils.DateTimeToYYYYMMDDhhmmss();
-
-			Map<String, String> data = new HashMap<String, String>();
-			data.put("version", bkInterfaceVersion);
-			data.put("encoding", encoding);
-			data.put("signMethod", "01");
-			data.put("txnType", "01");
-			data.put("txnSubType", "01");
-			data.put("bizType", bizType);// 000201：B2C 网关支付 000301：认证支付 2.0
-											// 000302：评级支付 000401：代付 000501：代收
-											// 000601：账单支付 000801：跨行收单
-											// 000901：绑定支付 001001：订购 000202：B2B
-			data.put("channelType", "08");
-			data.put("merId", merId);
-			data.put("accessType", "0");
-			data.put("orderId", orderId);
-			data.put("txnTime", orderDate);
-			data.put("currencyCode", "156");
-			data.put("txnAmt", String.valueOf(totalFee));
-			data.put("backUrl", backUrl);
-			data.put("frontUrl", payNotifyUrl);
-			data.put("accType", "01");
-			data.put("payTimeout", orderTimeOutDate);
-			data.put("reqReserved", interfaceName);//支付接口标识
-			if ("1".equals(activity)) { // 是否参加活动，0：不参加活动，1：参加活动
-				data.put("reserved", "{discountCode=activity}"); // 如果参与活动，该字段的值为“activity”，反之则不上送该字段
-			}
-
-			SDKConfig.getConfig("pay/unopPay/"+fileName);
-			data = SDKUtil.signData(data, encoding);
-
-			Map<String, String> extend = new HashMap<>();
-			extend.put("merUrl", payNotifyUrl);
-			extend.put("merVAR", "emaotai.cn.epay");
-			extend.put("orderDate", orderDate);
-			extend.put("buildData", ToolsUtil.mapToJson(data));
-
-			logger.debug("[" + bkInterfaceName + "] 签名以前：" + data);
-			data = SDKUtil.signData(data, SDKUtil.encoding_UTF8);
-			logger.debug("[" + bkInterfaceName + "] 签名以后：" + data);
-
-			Map<String, String> retData = new HashMap<String, String>();
-			String requestAppUrl = SDKConfig.getConfig().getAppRequestUrl();
-			ReturnObject returnObject = new ReturnObject();
-			try {
-				logger.debug("[" + bkInterfaceName + "]请求地址：" + requestAppUrl);
-				retData = post(data, requestAppUrl, "UTF-8");
-				// 应答码规范参考open.unionpay.com帮助中心 下载 产品接口规范 《平台接入接口规范-第5部分-附录》
-				if (null != retData && retData.size() > 0) {
-					logger.debug("[" + bkInterfaceName + "]返回值：" + retData);
-					if (validate(retData, "UTF-8")) {
-						logger.debug("[ApplePay]验证签名成功");
-						String respCode = retData.get("respCode");
-						/**
-						 * 00 成功，01-09 因银联全渠道系统原因导致的错误 ，10-29 有关商户端上送报文格式检查导致的错误
-						 * 30-59 有关商户/收单机构相关业务检查导致的错误 ，60-89
-						 * 有关持卡人或者发卡行（渠道）相关的问题导致的错误，90-99 预留
-						 */
-						if (("00").equals(respCode)) {// 成功,获取tn号
-							// 返回数据为成功时
-							String tn = retData.get("tn");
-							String tempString = "orderId=" + orderId + "&tn=" + tn;
-							String sign = getSign("10001", tempString);
-
-							Map<String, String> jsonData = new HashMap<String, String>();
-							jsonData.put("orderId", orderId);
-							jsonData.put("tn", tn);
-							jsonData.put("sign", sign);
-
-							returnObject.setRetcode(0);
-							returnObject.setRetmsg("成功");
-							returnObject.setData(jsonData);
-							String json = returnObject.toJson();
-							logger.debug("[" + bkInterfaceName + "]返回给云商城参数:{}", json);
-
-							// 写入数据库epay的epay_oder_detail表中
-							Integer retInt = insertPayOrderDetail(upTranData, upExtend, dbExtend, extend);
-							logger.debug("[" + bkInterfaceName + "]保存detail表状态：{}", retInt);
-						} else {
-							// 其他应答码为失败请排查原因或做失败处理
-							logger.debug("[" + bkInterfaceName + "]获取TN失败，返回代码：" + retData.get("respCode") + "/t/t返回消息：" + retData.get("respMsg"));
-							returnObject.setRetcode(-1);
-							returnObject.setRetmsg(retData.get("respMsg"));
-						}
-					} else {
-						logger.debug("[" + bkInterfaceName + "]验证签名失败");
-						returnObject.setRetcode(-2);
-						returnObject.setRetmsg("验证签名失败");
-					}
-				} else {
-					// 未返回正确的http状态
-					logger.debug("[" + bkInterfaceName + "]未获取到返回报文或返回http状态码非200");
-					returnObject.setRetcode(-3);
-					returnObject.setRetmsg("未获取到返回报文或返回http状态码非200");
-				}
-			} catch (Exception e) {
-				logger.debug("[" + bkInterfaceName + "]错误信息：" + e);
-				returnObject.setRetcode(-4);
-				returnObject.setRetmsg("获取TN失败");
-			}
-			Map<String, Object> payMap = new HashMap<String, Object>();
-			payMap.put("returnObject", returnObject);
-			return payMap;
-		} else {
-			throw new Exception("获取支付参数为空！");
-		}
+		logger.debug("[unionpay_emt]发起支付请求......");
+		Map<String, Object> payMap = new HashMap<String, Object>();
+		payMap.put("version", data.get("version"));
+		payMap.put("encoding", data.get("encoding"));
+		payMap.put("signMethod", data.get("signMethod"));
+		payMap.put("txnType", data.get("txnType"));
+		payMap.put("txnSubType", data.get("txnSubType"));
+		payMap.put("bizType", data.get("bizType"));
+		payMap.put("channelType", data.get("channelType"));
+		payMap.put("merId", data.get("merId"));
+		payMap.put("accessType", data.get("accessType"));
+		payMap.put("orderId", data.get("orderId"));
+		payMap.put("txnTime", data.get("txnTime"));
+		payMap.put("currencyCode", data.get("currencyCode"));
+		payMap.put("txnAmt", data.get("txnAmt"));
+		payMap.put("frontUrl", data.get("frontUrl"));
+		payMap.put("backUrl", data.get("backUrl"));
+		payMap.put("accType", data.get("accType"));
+		payMap.put("certId", data.get("certId"));
+		payMap.put("signature", data.get("signature"));
+		payMap.put("payTimeout", orderTimeOutDate);
+		return payMap;
 	}
 
 	@Autowired
